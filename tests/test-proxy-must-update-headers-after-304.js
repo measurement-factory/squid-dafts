@@ -71,14 +71,6 @@ describe('proxy', function () {
     });
 });
 
-// max-age=0 trick makes sleeping unnecessary
-// describe('proxy', function () {
-//     it('should wait for the cached response to become stale', function (done) {
-//         this.timeout(5*Second);
-//         setTimeout(() => { done(); }, 2*Second);
-//     });
-// });
-
 describe('proxy', function () {
 
     let testCase = new ProxyCase(true, true);
