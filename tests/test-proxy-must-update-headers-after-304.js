@@ -4,8 +4,10 @@
 
 import Promise from "bluebird";
 import ProxyCase from "./ProxyCase";
-import * as Gadgets from "../src/misc/Gadgets";
 import * as Config from "../src/misc/Config";
+import * as Uri from "../src/anyp/Uri";
+import Resource from "../src/anyp/Resource";
+import * as FuzzyTime from "../src/misc/FuzzyTime";
 import assert from "assert";
 
 process.on("unhandledRejection", function(reason /*, promise */) {
@@ -16,33 +18,31 @@ Promise.config({warnings: true});
 
 Config.DefaultMessageBodyContent = Array(2*32*1024).join("x");
 
-const RequestUriPath = Gadgets.UniqueId("/path");
+const Hour = new Date(60*60*1000); // 1 hour delta
 
-const Hour = new Date(60*60*1000).valueOf(); // 1 hour delta
+// TODO: Optionally tolerate any misses (mostly useful for parallel/life tests).
 
-const StartDate = new Date();
-const FirstCreationDate = new Date(StartDate.valueOf() - 100*Hour);
-const FirstExpirationDate = new Date(StartDate.valueOf() + Hour);
-const DateFor304 = new Date(FirstCreationDate.valueOf() + Hour);
-const DateFor200 = new Date(FirstCreationDate.valueOf() - Hour);
-let SecondCreationDate = null; // TBD
-let SecondExpirationDate = null; // TBD
+let resource = new Resource();
+resource.uri = Uri.Unique();
+resource.modifiedAt(FuzzyTime.DistantPast());
+resource.expireAt(FuzzyTime.Soon());
+
+let UpdatingResponse = null; // TBD
 
 let steps = [
 
 () => {
     let testCase = new ProxyCase('forward a cachable response');
-    testCase.client().request.startLine.uri._rest = RequestUriPath; // XXX: _rest
-    testCase.server().response.header.add("Response-ID", "first");
-    testCase.server().response.header.add("Last-Modified", FirstCreationDate.toUTCString());
-    testCase.server().response.header.add("Expires", FirstExpirationDate.toUTCString());
+    testCase.client().request.for(resource);
+    testCase.server().serve(resource);
+    testCase.server().response.tag("first");
     return testCase;
 },
 
 () => {
     let testCase = new ProxyCase('respond with a 304 hit');
-    testCase.client().request.startLine.uri._rest = RequestUriPath; // XXX: _rest
-    testCase.client().request.header.add("If-Modified-Since", DateFor304.toUTCString());
+    testCase.client().request.for(resource);
+    testCase.client().request.conditions({ims: resource.notModifiedSince(Hour)});
     testCase.check(() => {
         testCase.expectStatusCode(304);
     });
@@ -52,20 +52,18 @@ let steps = [
 () => {
     let testCase = new ProxyCase('miss and get a 304 that updates the previously cached response');
 
-    SecondCreationDate = new Date();
-    SecondExpirationDate = new Date(SecondCreationDate.valueOf() + Hour);
-
-    testCase.client().request.startLine.uri._rest = RequestUriPath; // XXX: _rest
-    testCase.client().request.header.add("If-Modified-Since", DateFor200.toUTCString());
+    resource.modifyNow();
+    resource.expireAt(FuzzyTime.DistantFuture());
+    testCase.client().request.for(resource);
+    testCase.client().request.conditions({ims: resource.modifiedSince(Hour)});
     testCase.client().request.header.add("Cache-Control", "max-age=0");
+    testCase.server().serve(resource);
+    testCase.server().response.tag("second");
     testCase.server().response.startLine.statusCode = 304;
-    testCase.server().response.header.add("Response-ID", "second");
-    testCase.server().response.header.add("Last-Modified", SecondCreationDate.toUTCString());
-    testCase.server().response.header.add("Expires", SecondExpirationDate.toUTCString());
-
     testCase.check(() => {
         testCase.expectStatusCode(200);
         // XXX: Check the headers.
+        UpdatingResponse = testCase.server().transaction().response;
     });
 
     return testCase;
@@ -73,13 +71,14 @@ let steps = [
 
 () => {
     let testCase = new ProxyCase('hit updated headers');
-    testCase.client().request.startLine.uri._rest = RequestUriPath; // XXX: _rest
+    testCase.client().request.for(resource);
     testCase.check(() => {
         testCase.expectStatusCode(200);
-        let response = testCase.client().transaction().response;
-        assert.equal(response.header.values("Response-ID"), "second", "updated Response-ID");
-        assert.equal(response.header.values("Last-Modified"), SecondCreationDate.toUTCString(), "updated Last-Modified");
-        assert.equal(response.header.values("Expires"), SecondExpirationDate.toUTCString(), "updated Expires");
+        let updatedResponse = testCase.client().transaction().response;
+        assert.equal(updatedResponse.tag(), UpdatingResponse.tag(), "updated X-Daft-Response-Tag");
+        assert.equal(updatedResponse.id(), UpdatingResponse.id(), "updated X-Daft-Response-ID");
+        assert.equal(updatedResponse.header.values("Last-Modified"), resource.lastModificationTime.toUTCString(), "updated Last-Modified");
+        assert.equal(updatedResponse.header.values("Expires"), resource.nextModificationTime.toUTCString(), "updated Expires");
     });
     return testCase;
 }
