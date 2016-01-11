@@ -8,6 +8,7 @@ import * as Uri from "../src/anyp/Uri";
 import Body from "../src/http/Body";
 import Resource from "../src/anyp/Resource";
 import * as FuzzyTime from "../src/misc/FuzzyTime";
+import * as Lifetime from "../src/misc/Lifetime";
 import assert from "assert";
 
 process.on("unhandledRejection", function (reason /*, promise */) {
@@ -18,10 +19,11 @@ Promise.config({ warnings: true });
 
 // TODO: Optionally tolerate any misses (mostly useful for parallel/life tests).
 
-async function Test() {
+async function Test(take, callback) {
 
     let resource = new Resource();
     resource.uri = Uri.Unique();
+    resource.uri.port = resource.uri.port + (take % 50000);
     resource.modifiedAt(FuzzyTime.DistantPast());
     resource.expireAt(FuzzyTime.Soon());
     resource.body = new Body("x".repeat(64*1024));
@@ -83,6 +85,42 @@ async function Test() {
     }
 
     console.log("Test result: success");
+    if (callback)
+        callback();
 }
 
-Test();
+function TestPromise(take) {
+    return Promise.try(function () {
+        let resolver;
+        let promise = new Promise((resolve) => {
+            resolver = resolve;
+        });
+        Test(take, resolver);
+        return promise;
+    });
+}
+
+let TestsRunning = 0; // number of concurrent tests running now
+
+// usage: $0 [number-of-tests-per-thread [number-of-concurrent-threads]]
+const args = process.argv.slice(2);
+const testsPerThread = (args[0] || 1);
+const concurrentThreads = (args[1] || 1);
+
+async function TestThread(threadId) {
+    // do not let test take IDs overlap across threads
+    const spread = testsPerThread <= 1000 ? 1000 : testsPerThread;
+    for (let i = 0; i < testsPerThread; ++i) {
+        if (i)
+            Lifetime.Extend();
+        const take = spread*threadId + i;
+        console.log("Starting test %d. Concurrency level: %d.", take, ++TestsRunning);
+        await TestPromise(take);
+        console.log("Finished test %d. Concurrency level: %d.", take, TestsRunning--);
+    }
+}
+
+for (let threadId = 0; threadId < concurrentThreads; ++threadId)
+    TestThread(threadId);
+
+console.log(`Started all ${concurrentThreads} test threads.`);
