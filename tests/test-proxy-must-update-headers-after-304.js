@@ -9,10 +9,12 @@
 import Promise from "bluebird";
 import ProxyCase from "./ProxyCase";
 import * as Uri from "../src/anyp/Uri";
+import Field from "../src/http/Field";
 import Body from "../src/http/Body";
 import Resource from "../src/anyp/Resource";
 import * as FuzzyTime from "../src/misc/FuzzyTime";
 import * as Lifetime from "../src/misc/Lifetime";
+import * as Gadgets from "../src/misc/Gadgets";
 import assert from "assert";
 
 process.on("unhandledRejection", function (reason /*, promise */) {
@@ -32,11 +34,17 @@ async function Test(take, callback) {
     resource.expireAt(FuzzyTime.Soon());
     resource.body = new Body("x".repeat(64*1024));
 
+    // This header appears in the initially cached response.
+    // This header does not appear in the updatingResponse.
+    // This header must upppear in the updatedResponse.
+    const hitCheck = new Field("X-Daft-Hit-Check", Gadgets.UniqueId("check"));
+
     {
         let testCase = new ProxyCase('forward a cachable response');
         testCase.client().request.for(resource);
         testCase.server().serve(resource);
         testCase.server().response.tag("first");
+        testCase.server().response.header.add(hitCheck);
         await testCase.run();
     }
 
@@ -84,6 +92,7 @@ async function Test(take, callback) {
             assert.equal(updatedResponse.id(), updatingResponse.id(), "updated X-Daft-Response-ID");
             assert.equal(updatedResponse.header.values("Last-Modified"), resource.lastModificationTime.toUTCString(), "updated Last-Modified");
             assert.equal(updatedResponse.header.values("Expires"), resource.nextModificationTime.toUTCString(), "updated Expires");
+            assert.equal(updatedResponse.header.value(hitCheck.name), hitCheck.value, "preserved originally cached header field");
         });
         await testCase.run();
     }
