@@ -8,7 +8,6 @@
 
 import Promise from "bluebird";
 import ProxyCase from "./ProxyCase";
-import * as Uri from "../src/anyp/Uri";
 import Field from "../src/http/Field";
 import Body from "../src/http/Body";
 import Resource from "../src/anyp/Resource";
@@ -28,8 +27,9 @@ Promise.config({ warnings: true });
 async function Test(take, callback) {
 
     let resource = new Resource();
-    resource.uri = Uri.Unique();
+    resource.uri.finalize(); // set default port used below
     resource.uri.port = resource.uri.port + (take % 50000);
+    resource.uri.makeUnique();
     resource.modifiedAt(FuzzyTime.DistantPast());
     resource.expireAt(FuzzyTime.Soon());
     resource.body = new Body("x".repeat(64*1024));
@@ -94,6 +94,13 @@ async function Test(take, callback) {
             assert.equal(updatedResponse.header.values("Expires"), resource.nextModificationTime.toUTCString(), "updated Expires");
             assert.equal(updatedResponse.header.value(hitCheck.name), hitCheck.value, "preserved originally cached header field");
         });
+        await testCase.run();
+    }
+
+    {
+        let testCase = new ProxyCase('cleanup leftovers using a cachable response');
+        testCase.client().request.tag("cleanup");
+        testCase.server(); // create
         await testCase.run();
     }
 
