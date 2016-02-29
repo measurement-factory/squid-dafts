@@ -14,6 +14,7 @@ import Resource from "../src/anyp/Resource";
 import * as FuzzyTime from "../src/misc/FuzzyTime";
 import * as Lifetime from "../src/misc/Lifetime";
 import * as Gadgets from "../src/misc/Gadgets";
+import * as Config from "../src/misc/Config";
 import assert from "assert";
 
 process.on("unhandledRejection", function (reason /*, promise */) {
@@ -27,12 +28,11 @@ Promise.config({ warnings: true });
 async function Test(take, callback) {
 
     let resource = new Resource();
-    resource.uri.finalize(); // set default port used below
-    resource.uri.port = resource.uri.port + (take % 50000);
     resource.uri.makeUnique();
     resource.modifiedAt(FuzzyTime.DistantPast());
     resource.expireAt(FuzzyTime.Soon());
     resource.body = new Body("x".repeat(64*1024));
+    resource.finalize();
 
     // This header appears in the initially cached response.
     // This header does not appear in the updatingResponse.
@@ -99,8 +99,11 @@ async function Test(take, callback) {
 
     {
         let testCase = new ProxyCase('cleanup leftovers using a cachable response');
+        let uri = resource.uri.clone();
+        uri.makeUnique();
+        testCase.client().request.startLine.uri = uri;
         testCase.client().request.tag("cleanup");
-        testCase.server(); // create
+        testCase.server().listenAt(uri.address());
         await testCase.run();
     }
 
@@ -126,6 +129,7 @@ let TestsRunning = 0; // number of concurrent tests running now
 const args = process.argv.slice(2);
 const testsPerThread = (args[0] || 1);
 const concurrentThreads = (args[1] || 1);
+const listeningPort = args[2] ? parseInt(args[2], 10) : undefined;
 
 async function TestThread(threadId) {
     // do not let test take IDs overlap across threads
@@ -133,6 +137,11 @@ async function TestThread(threadId) {
     for (let i = 0; i < testsPerThread; ++i) {
         if (i)
             Lifetime.Extend();
+
+        // XXX: We have to reset this global before each test start because starts are concurrent.
+        if (listeningPort)
+            Config.OriginAuthority.port = listeningPort + threadId;
+
         const take = spread*threadId + i;
         console.log("Starting test %d. Concurrency level: %d.", take, ++TestsRunning);
         await TestPromise(take);
