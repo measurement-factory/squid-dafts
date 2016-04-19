@@ -28,7 +28,6 @@ Promise.config({ warnings: true });
 async function Test(take, callback) {
 
     let resource = new Resource();
-    resource.uri.makeUnique();
     resource.modifiedAt(FuzzyTime.DistantPast());
     resource.expireAt(FuzzyTime.Soon());
     resource.body = new Body("x".repeat(64*1024));
