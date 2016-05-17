@@ -37,9 +37,9 @@ Config.Recognize([
     {
         option: "speed",
         type: "String",
-        enum: [ "fast", "slow"],
+        enum: [ "fast", "slow" ],
         default: "slow",
-        description: "expected response speed"
+        description: "expected response speed",
     },
 ]);
 
