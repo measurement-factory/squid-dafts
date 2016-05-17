@@ -72,7 +72,6 @@ async function Test(testRun, callback) {
     resource.uri.address = Gadgets.ReserveListeningAddress();
     resource.uri.makeUnique("/speed=" + Config.Speed + "/");
     resource.body = new Body("x".repeat(srvBodySize));
-    resource.uri.makeUnique("/speed=" + Config.Speed + "/");
     // XXX: We should mark the response, not the request [URI].
 
     let testCase = new ProxyCase(description);
