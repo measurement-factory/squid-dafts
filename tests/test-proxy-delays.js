@@ -7,7 +7,7 @@
 
 // Expected Squid response delay pool configuration:
 //
-// acl slowResponse urlpath_regex ^/speed=slow/
+// acl slowResponse rep_header Speed ^slow
 // response_delay_pool slowPool \
 //     bucket_speed_limit=50000 \
 //     max_bucket_size=100000 \
@@ -72,7 +72,6 @@ async function Test(testRun, callback) {
     resource.uri.address = Gadgets.ReserveListeningAddress();
     resource.uri.makeUnique("/speed=" + Config.Speed + "/");
     resource.body = new Body("x".repeat(srvBodySize));
-    // XXX: We should mark the response, not the request [URI].
 
     let testCase = new ProxyCase(description);
     testCase.client().request.for(resource);
