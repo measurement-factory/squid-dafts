@@ -3,17 +3,15 @@
  * Licensed under the Apache License, Version 2.0.                       */
 
 // Proxy MUST update previously cached headers on 304 responses.
-//
-// babel-node --optional es7.asyncFunctions tests/test-...
 
 import Promise from "bluebird";
 import ProxyCase from "./ProxyCase";
 import Field from "../src/http/Field";
 import Body from "../src/http/Body";
 import Resource from "../src/anyp/Resource";
+import StartTests from "../src/misc/TestRunner";
 import * as FuzzyTime from "../src/misc/FuzzyTime";
 import * as Gadgets from "../src/misc/Gadgets";
-import * as Config from "../src/misc/Config";
 import assert from "assert";
 
 process.on("unhandledRejection", function (reason /*, promise */) {
@@ -24,9 +22,10 @@ Promise.config({ warnings: true });
 
 // TODO: Optionally tolerate any misses (mostly useful for parallel/life tests).
 
-async function Test(take, callback) {
+async function Test(testRun, callback) {
 
     let resource = new Resource();
+    resource.uri.address = Gadgets.ReserveListeningAddress();
     resource.modifiedAt(FuzzyTime.DistantPast());
     resource.expireAt(FuzzyTime.Soon());
     resource.body = new Body("x".repeat(64*1024));
@@ -97,54 +96,18 @@ async function Test(take, callback) {
 
     {
         let testCase = new ProxyCase('cleanup leftovers using a cachable response');
-        let uri = resource.uri.clone();
-        uri.makeUnique();
-        testCase.client().request.startLine.uri = uri;
+        resource.uri.makeUnique();
+        testCase.client().request.for(resource);
         testCase.client().request.tag("cleanup");
-        testCase.server().listenAt(uri.address());
+        testCase.server().serve(resource);
+        testCase.server().response.tag("cleanup");
         await testCase.run();
     }
 
+    Gadgets.ReleaseListeningAddress(resource.uri.address);
     console.log("Test result: success");
     if (callback)
         callback();
 }
 
-function TestPromise(take) {
-    return Promise.try(function () {
-        let resolver;
-        let promise = new Promise((resolve) => {
-            resolver = resolve;
-        });
-        Test(take, resolver);
-        return promise;
-    });
-}
-
-let TestsRunning = 0; // number of concurrent tests running now
-
-// usage: $0 [number-of-tests-per-thread [number-of-concurrent-threads]]
-const args = process.argv.slice(2);
-const testsPerThread = (args[0] || 1);
-const concurrentThreads = (args[1] || 1);
-const listeningPort = args[2] ? parseInt(args[2], 10) : undefined;
-
-async function TestThread(threadId) {
-    // do not let test take IDs overlap across threads
-    const spread = testsPerThread <= 1000 ? 1000 : testsPerThread;
-    for (let i = 0; i < testsPerThread; ++i) {
-        // XXX: We have to reset this global before each test start because starts are concurrent.
-        if (listeningPort)
-            Config.OriginAuthority.port = listeningPort + threadId;
-
-        const take = spread*threadId + i;
-        console.log("Starting test %d. Concurrency level: %d.", take, ++TestsRunning);
-        await TestPromise(take);
-        console.log("Finished test %d. Concurrency level: %d.", take, TestsRunning--);
-    }
-}
-
-for (let threadId = 0; threadId < concurrentThreads; ++threadId)
-    TestThread(threadId);
-
-console.log(`Started all ${concurrentThreads} test threads.`);
+StartTests(Test);
