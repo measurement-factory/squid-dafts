@@ -41,22 +41,34 @@ Config.Recognize([
         default: "slow",
         description: "expected response speed",
     },
+    {
+        option: "bucket-speed-limit",
+        type: "Number",
+        default: "50000",
+        description: "response_delay_pool's bucket_speed_limit",
+    },
+    {
+        option: "aggregate-speed-limit",
+        type: "Number",
+        description: "response_delay_pool's aggregate_speed_limit",
+    }
 ]);
 
-const bucketSpeed = 50 * 1000;
-const aggregateSpeed = bucketSpeed * 2;
 const srvBodySize = 1000 * 1000; // 1 MB
 const maxDeviation = 10.0; // percent
 
 async function Test(testRun, callback) {
 
+    if (Config.AggregateSpeedLimit === undefined)
+        Config.AggregateSpeedLimit = Config.BucketSpeedLimit * Config.ConcurrencyLevel;
+
     // do not log large body handling details by default
     if (Config.LogBodies === undefined)
         Config.LogBodies = 0;
 
-    let slowSpeed = aggregateSpeed / Config.ConcurrencyLevel;
-    if (slowSpeed > bucketSpeed)
-        slowSpeed = bucketSpeed;
+    let slowSpeed = Config.AggregateSpeedLimit / Config.ConcurrencyLevel;
+    if (slowSpeed > Config.BucketSpeedLimit)
+        slowSpeed = Config.BucketSpeedLimit;
 
     let expectedSpeed;
     let description;
