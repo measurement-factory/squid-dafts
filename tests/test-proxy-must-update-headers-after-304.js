@@ -10,6 +10,7 @@ import Field from "../src/http/Field";
 import Body from "../src/http/Body";
 import Resource from "../src/anyp/Resource";
 import StartTests from "../src/misc/TestRunner";
+import * as AddressPool from "../misc/AddressPool";
 import * as FuzzyTime from "../src/misc/FuzzyTime";
 import * as Gadgets from "../src/misc/Gadgets";
 import assert from "assert";
@@ -25,7 +26,7 @@ Promise.config({ warnings: true });
 async function Test(testRun, callback) {
 
     let resource = new Resource();
-    resource.uri.address = Gadgets.ReserveListeningAddress();
+    resource.uri.address = AddressPool.ReserveListeningAddress();
     resource.modifiedAt(FuzzyTime.DistantPast());
     resource.expireAt(FuzzyTime.Soon());
     resource.body = new Body("x".repeat(64*1024));
@@ -104,7 +105,7 @@ async function Test(testRun, callback) {
         await testCase.run();
     }
 
-    Gadgets.ReleaseListeningAddress(resource.uri.address);
+    AddressPool.ReleaseListeningAddress(resource.uri.address);
     console.log("Test result: success");
     if (callback)
         callback();
