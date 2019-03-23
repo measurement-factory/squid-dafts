@@ -2,15 +2,9 @@ import Promise from "bluebird";
 import * as Config from "../src/misc/Config";
 import * as AddressPool from "../src/misc/AddressPool";
 import ProxyCase from "./ProxyCase";
-import StartTests from "../src/misc/TestRunner";
 import * as Gadgets from "../src/misc/Gadgets";
 import assert from "assert";
-
-process.on("unhandledRejection", function (reason /*, promise */) {
-    console.log("Quitting on a rejected promise:", reason);
-    throw reason;
-});
-Promise.config({ warnings: true });
+import Test from "../src/misc/Test";
 
 /* for time conversion to milliseconds */
 const milliseconds = 1;
@@ -702,8 +696,16 @@ function makeTestCases() {
     return plannedCases;
 }
 
-async function Test(testRun, callback) {
-    const plannedCases = makeTestCases(); // see XXX regarding Config.Finalize() in StartTests()
+export default class MyTest extends Test
+{
+    constructor(...args)
+    {
+        super(...args);
+        this.plannedCases = makeTestCases();
+    }
+
+async run(testRun) {
+    assert(this.plannedCases);
 
     // Hack: We rely on zero-TTL DNS records. Some proxies ignore zero TTLs when
     // collapsing DNS queries. To reduce collapsing, delay N+1 tests.
@@ -711,7 +713,7 @@ async function Test(testRun, callback) {
     await new Promise(resolve => setTimeout(resolve, (testRun.id-1) * 5000 * milliseconds));
     console.log(new Date().toISOString(), "Actually starting test run", testRun);
 
-    for (let testCase of plannedCases) {
+    for (let testCase of this.plannedCases) {
         const winner = testCase.winner();
 
         // TODO: Add and use AddressPool.ReserveListeningPort() instead.
@@ -745,10 +747,6 @@ async function Test(testRun, callback) {
 
         AddressPool.ReleaseListeningAddress(addressForPort);
     }
-
-    console.log("Test result: success");
-    if (callback)
-        callback();
 }
 
-StartTests(Test);
+}
