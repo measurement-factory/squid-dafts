@@ -41,8 +41,7 @@ class GenError { // extends Error
 }
 
 // a DNS query or a TCP probe for an IPv4 or IPv6 address
-class Step
-{
+class Step {
     constructor(family) {
         assert(arguments.length === 1);
         assert(family === 0 || family === 4 || family === 6);
@@ -135,8 +134,7 @@ class Step
 }
 
 // a DNS query step
-class DnsStep extends Step
-{
+class DnsStep extends Step {
     constructor(family) {
         super(family);
     }
@@ -156,8 +154,7 @@ class DnsStep extends Step
 }
 
 // a TCP probe step
-class TcpStep extends Step
-{
+class TcpStep extends Step {
     constructor(family, failure) {
         assert(arguments.length === 2);
         super(family);
@@ -209,8 +206,7 @@ class TcpStep extends Step
 
 // manages computation of the winning Step IPs and response times
 // a sequence of same-family Steps (prime or spare)
-class FamilySteps
-{
+class FamilySteps {
     constructor(dnsStep, tcpSteps) {
         assert(arguments.length === 2);
         this.dnsStep_ = dnsStep;
@@ -231,13 +227,13 @@ class FamilySteps
     }
 
     allSteps() {
-        return [ this.dnsStep_, ...this.tcpSteps_ ];
+        return [this.dnsStep_, ...this.tcpSteps_];
     }
 
     // no steps after the final() step
     useful() {
         const idx = this.findFinalStepIndex_();
-        const isUseful = idx < 0 || idx === (this.tcpSteps_.length-1);
+        const isUseful = idx < 0 || idx === (this.tcpSteps_.length - 1);
         // if (isUseful)
         //     console.log("useful  family:", this.toString());
         // else
@@ -349,8 +345,7 @@ class HappyCase extends ProxyCase {
 // * first TCP steps
 // * secondary DNS step
 // * last TCP steps, starting with a middle TCP step (firstFamilyAfterSpare)
-class Walk
-{
+class Walk {
     constructor(primeFamilyId) {
         assert(arguments.length === 1);
         this.primeFamilyId_ = primeFamilyId;
@@ -420,7 +415,7 @@ class Walk
 
         // a minimal delay that would place a TCP step after SW
         // as any TCP step delay, this should be divisible by StepSize
-        const SpareWaitDelay = StepSize*Math.floor((SpareWaitExact + StepSize - 1*milliseconds)/StepSize);
+        const SpareWaitDelay = StepSize * Math.floor((SpareWaitExact + StepSize - 1*milliseconds) / StepSize);
         assert(SpareWaitDelay > SpareWaitExact);
 
         // s1 delay in test case "p0 s0 SW p1+ s1+" below depends on this
@@ -583,8 +578,8 @@ class Walk
         let winningStep = null;
         let sortedSteps = [];
         while (primeSteps.length || spareSteps.length) {
-            const primeDelay = primeSteps.length ? primeSteps[0].delay() : Number.MAX_VALUE/2;
-            const spareDelay = spareSteps.length ? spareSteps[0].delay() : Number.MAX_VALUE/2;
+            const primeDelay = primeSteps.length ? primeSteps[0].delay() : Number.MAX_VALUE / 2;
+            const spareDelay = spareSteps.length ? spareSteps[0].delay() : Number.MAX_VALUE / 2;
             let step = null;
             if (primeRptm + primeDelay <= spareRptm + spareDelay) {
                 primeRptm += primeDelay;
@@ -675,8 +670,7 @@ function makeTestCases() {
                         }
                         console.log("plan:", domainName, testCase.gist);
                         plannedCases.push(testCase);
-                    }
-                    catch (err) {
+                    } catch (err) {
                         if (!(err instanceof GenError))
                             throw err;
 
@@ -696,57 +690,55 @@ function makeTestCases() {
     return plannedCases;
 }
 
-export default class MyTest extends Test
-{
-    constructor(...args)
-    {
+export default class MyTest extends Test {
+    constructor(...args) {
         super(...args);
         this.plannedCases = makeTestCases();
     }
 
-async run(testRun) {
-    assert(this.plannedCases);
+    async run(testRun) {
+        assert(this.plannedCases);
 
-    // Hack: We rely on zero-TTL DNS records. Some proxies ignore zero TTLs when
-    // collapsing DNS queries. To reduce collapsing, delay N+1 tests.
-    console.log(new Date().toISOString(), "Planned test run", testRun);
-    await new Promise(resolve => setTimeout(resolve, (testRun.id-1) * 5000 * milliseconds));
-    console.log(new Date().toISOString(), "Actually starting test run", testRun);
+        // Hack: We rely on zero-TTL DNS records. Some proxies ignore zero TTLs when
+        // collapsing DNS queries. To reduce collapsing, delay N+1 tests.
+        console.log(new Date().toISOString(), "Planned test run", testRun);
+        await new Promise(resolve => setTimeout(resolve, (testRun.id - 1) * 5000 * milliseconds));
+        console.log(new Date().toISOString(), "Actually starting test run", testRun);
 
-    for (let testCase of this.plannedCases) {
-        const winner = testCase.winner();
+        for (let testCase of this.plannedCases) {
+            const winner = testCase.winner();
 
-        // TODO: Add and use AddressPool.ReserveListeningPort() instead.
-        const addressForPort = AddressPool.ReserveListeningAddress();
-        const port = addressForPort.port;
+            // TODO: Add and use AddressPool.ReserveListeningPort() instead.
+            const addressForPort = AddressPool.ReserveListeningAddress();
+            const port = addressForPort.port;
 
-        testCase.client().request.startLine.uri.address = {
-            host: testCase.domainName(),
-            port: port
-        };
-        testCase.server().listenAt({
-            host: winner.ip(),
-            port: port
-        });
-        testCase.check(() => {
-            const plannedFamily = "IPv" + winner.family();
-            const actualFamily = Gadgets.HostFamilyString(testCase.server().transaction().response.generatorAddress().host);
-            assert.equal(actualFamily, plannedFamily, `used faster ${plannedFamily} path`);
+            testCase.client().request.startLine.uri.address = {
+                host: testCase.domainName(),
+                port: port
+            };
+            testCase.server().listenAt({
+                host: winner.ip(),
+                port: port
+            });
+            testCase.check(() => {
+                const plannedFamily = "IPv" + winner.family();
+                const actualFamily = Gadgets.HostFamilyString(testCase.server().transaction().response.generatorAddress().host);
+                assert.equal(actualFamily, plannedFamily, `used faster ${plannedFamily} path`);
 
-            const plannedDelay = new Date(testCase.minResponseTime()*milliseconds);
-            const actualDecisionDelay = new Date(testCase.server().transaction().startTime() - testCase.client().transaction().sentTime());
-            const actualTotalDelay = testCase.runtime();
-            console.log(`connected in ${actualDecisionDelay.getTime()} vs. expected minimum of ${plannedDelay.getTime()} milliseconds`);
-            console.log(`test case took ${actualTotalDelay.getTime()} vs. expected minimum of ${plannedDelay.getTime()} milliseconds`);
+                const plannedDelay = new Date(testCase.minResponseTime() * milliseconds);
+                const actualDecisionDelay = new Date(testCase.server().transaction().startTime() - testCase.client().transaction().sentTime());
+                const actualTotalDelay = testCase.runtime();
+                console.log(`connected in ${actualDecisionDelay.getTime()} vs. expected minimum of ${plannedDelay.getTime()} milliseconds`);
+                console.log(`test case took ${actualTotalDelay.getTime()} vs. expected minimum of ${plannedDelay.getTime()} milliseconds`);
 
-            const allowedDelta = 2000 * milliseconds; // XXX 20 * StepSize * 0.90;
-            assert(actualDecisionDelay.getTime() > (plannedDelay.getTime()), "honored delays");
-            assert(actualDecisionDelay.getTime() < (plannedDelay.getTime()+allowedDelta), "finished ASAP");
-        });
-        await testCase.run();
+                const allowedDelta = 2000 * milliseconds; // XXX 20 * StepSize * 0.90;
+                assert(actualDecisionDelay.getTime() > (plannedDelay.getTime()), "honored delays");
+                assert(actualDecisionDelay.getTime() < (plannedDelay.getTime() + allowedDelta), "finished ASAP");
+            });
+            await testCase.run();
 
-        AddressPool.ReleaseListeningAddress(addressForPort);
+            AddressPool.ReleaseListeningAddress(addressForPort);
+        }
     }
-}
 
 }
