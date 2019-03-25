@@ -4,26 +4,22 @@
 
 // Proxy MUST update previously cached headers on 304 responses.
 
-import Promise from "bluebird";
 import ProxyCase from "./ProxyCase";
 import Field from "../src/http/Field";
 import Body from "../src/http/Body";
 import Resource from "../src/anyp/Resource";
-import StartTests from "../src/misc/TestRunner";
-import * as AddressPool from "../misc/AddressPool";
+import * as AddressPool from "../src/misc/AddressPool";
 import * as FuzzyTime from "../src/misc/FuzzyTime";
 import * as Gadgets from "../src/misc/Gadgets";
 import assert from "assert";
+import Test from "../src/misc/Test";
 
-process.on("unhandledRejection", function (reason /*, promise */) {
-    console.log("Quitting on a rejected promise:", reason);
-    throw reason;
-});
-Promise.config({ warnings: true });
 
 // TODO: Optionally tolerate any misses (mostly useful for parallel/life tests).
 
-async function Test(testRun, callback) {
+export default class MyTest extends Test {
+
+    async run(/*testRun*/) {
 
     let resource = new Resource();
     resource.uri.address = AddressPool.ReserveListeningAddress();
@@ -106,9 +102,6 @@ async function Test(testRun, callback) {
     }
 
     AddressPool.ReleaseListeningAddress(resource.uri.address);
-    console.log("Test result: success");
-    if (callback)
-        callback();
 }
 
-StartTests(Test);
+}
