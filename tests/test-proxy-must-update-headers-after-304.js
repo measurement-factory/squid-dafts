@@ -12,7 +12,7 @@ import * as AddressPool from "../src/misc/AddressPool";
 import * as FuzzyTime from "../src/misc/FuzzyTime";
 import * as Gadgets from "../src/misc/Gadgets";
 import assert from "assert";
-import Test from "../src/misc/Test";
+import Test from "../src/test/Test";
 
 
 // TODO: Optionally tolerate any misses (mostly useful for parallel/life tests).

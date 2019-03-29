@@ -4,7 +4,7 @@ import * as AddressPool from "../src/misc/AddressPool";
 import HttpTestCase from "../src/test/HttpCase";
 import * as Gadgets from "../src/misc/Gadgets";
 import assert from "assert";
-import Test from "../src/misc/Test";
+import Test from "../src/test/Test";
 
 /* for time conversion to milliseconds */
 const milliseconds = 1;

@@ -24,7 +24,7 @@ import Resource from "../src/anyp/Resource";
 import * as Http from "../src/http/Gadgets";
 import * as Gadgets from "../src/misc/Gadgets";
 import * as Config from "../src/misc/Config";
-import StartTests from "../src/misc/TestRunner";
+import StartTests from "../src/test/Runner";
 import assert from "assert";
 
 process.on("unhandledRejection", function (reason /*, promise */) {
