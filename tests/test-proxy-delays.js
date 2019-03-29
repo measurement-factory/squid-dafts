@@ -18,7 +18,7 @@
 
 
 import Promise from "bluebird";
-import ProxyCase from "./ProxyCase";
+import HttpTestCase from "../src/test/HttpCase";
 import Body from "../src/http/Body";
 import Resource from "../src/anyp/Resource";
 import * as Http from "../src/http/Gadgets";
@@ -85,7 +85,7 @@ async function Test(testRun, callback) {
     resource.uri.makeUnique("/speed=" + Config.Speed + "/");
     resource.body = new Body("x".repeat(srvBodySize));
 
-    let testCase = new ProxyCase(description);
+    let testCase = new HttpTestCase(description);
     testCase.client().request.for(resource);
     testCase.server().serve(resource);
     testCase.server().response.header.add("Speed", Config.Speed);

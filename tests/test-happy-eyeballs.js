@@ -1,7 +1,7 @@
 import Promise from "bluebird";
 import * as Config from "../src/misc/Config";
 import * as AddressPool from "../src/misc/AddressPool";
-import ProxyCase from "./ProxyCase";
+import HttpTestCase from "../src/test/HttpCase";
 import * as Gadgets from "../src/misc/Gadgets";
 import assert from "assert";
 import Test from "../src/misc/Test";
@@ -265,7 +265,7 @@ class FamilySteps {
 }
 
 
-class HappyCase extends ProxyCase {
+class HappyCase extends HttpTestCase {
     constructor(walk, gist, leadingSteps) {
         assert(arguments.length === 3);
         assert(leadingSteps.length >= 3); // p0, s0, and a winning TCP step

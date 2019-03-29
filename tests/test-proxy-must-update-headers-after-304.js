@@ -4,7 +4,7 @@
 
 // Proxy MUST update previously cached headers on 304 responses.
 
-import ProxyCase from "./ProxyCase";
+import HttpTestCase from "../src/test/HttpCase";
 import Field from "../src/http/Field";
 import Body from "../src/http/Body";
 import Resource from "../src/anyp/Resource";
@@ -34,7 +34,7 @@ export default class MyTest extends Test {
         const hitCheck = new Field("X-Daft-Hit-Check", Gadgets.UniqueId("check"));
 
         {
-            let testCase = new ProxyCase('forward a cachable response');
+            let testCase = new HttpTestCase('forward a cachable response');
             testCase.client().request.for(resource);
             testCase.server().serve(resource);
             testCase.server().response.tag("first");
@@ -43,7 +43,7 @@ export default class MyTest extends Test {
         }
 
         {
-            let testCase = new ProxyCase('respond with a 304 hit');
+            let testCase = new HttpTestCase('respond with a 304 hit');
             testCase.client().request.for(resource);
             testCase.client().request.conditions({ ims: resource.notModifiedSince() });
             testCase.check(() => {
@@ -54,7 +54,7 @@ export default class MyTest extends Test {
 
         let updatingResponse = null; // TBD
         {
-            let testCase = new ProxyCase('miss and get a 304 that updates the previously cached response');
+            let testCase = new HttpTestCase('miss and get a 304 that updates the previously cached response');
 
             resource.modifyNow();
             resource.expireAt(FuzzyTime.DistantFuture());
@@ -77,7 +77,7 @@ export default class MyTest extends Test {
         }
 
         {
-            let testCase = new ProxyCase('hit updated headers');
+            let testCase = new HttpTestCase('hit updated headers');
             testCase.client().request.for(resource);
             testCase.check(() => {
                 testCase.expectStatusCode(200);
@@ -92,7 +92,7 @@ export default class MyTest extends Test {
         }
 
         {
-            let testCase = new ProxyCase('cleanup leftovers using a cachable response');
+            let testCase = new HttpTestCase('cleanup leftovers using a cachable response');
             resource.uri.makeUnique();
             testCase.client().request.for(resource);
             testCase.client().request.tag("cleanup");
