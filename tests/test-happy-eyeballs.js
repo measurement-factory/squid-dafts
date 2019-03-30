@@ -5,6 +5,7 @@ import HttpTestCase from "../src/test/HttpCase";
 import * as Gadgets from "../src/misc/Gadgets";
 import assert from "assert";
 import Test from "../src/test/Test";
+import ProxyOverlord from "../src/overlord/Proxy";
 
 /* for time conversion to milliseconds */
 const milliseconds = 1;
@@ -694,6 +695,15 @@ export default class MyTest extends Test {
     constructor(...args) {
         super(...args);
         this.plannedCases = makeTestCases();
+        this.proxy = new ProxyOverlord();
+    }
+
+    async startup() {
+        await this.proxy.start();
+    }
+
+    async shutdown() {
+        await this.proxy.stop();
     }
 
     async run(testRun) {
