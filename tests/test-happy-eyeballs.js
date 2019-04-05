@@ -694,7 +694,7 @@ function makeTestCases() {
 export default class MyTest extends Test {
     constructor(...args) {
         super(...args);
-        this.plannedCases = makeTestCases();
+        this.plannedCases = null; // TBD
         this.proxy = new ProxyOverlord();
     }
 
@@ -707,10 +707,14 @@ export default class MyTest extends Test {
     }
 
     async run(testRun) {
+        // XXX: Re-generating all test cases for each test run.
+        // TODO: Split HappyCase away from HttpTestCase to make it reusable.
+        this.plannedCases = makeTestCases();
         assert(this.plannedCases);
 
         // Hack: We rely on zero-TTL DNS records. Some proxies ignore zero TTLs when
         // collapsing DNS queries. To reduce collapsing, delay N+1 tests.
+        // TODO: Use .runN.test suffix (for concurrent tests?).
         console.log(new Date().toISOString(), "Planned test run", testRun);
         await new Promise(resolve => setTimeout(resolve, (testRun.id - 1) * 5000 * milliseconds));
         console.log(new Date().toISOString(), "Actually starting test run", testRun);
