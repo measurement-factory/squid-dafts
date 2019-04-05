@@ -693,17 +693,8 @@ function makeTestCases() {
 
 export default class MyTest extends Test {
     constructor(...args) {
-        super(...args);
+        super(new ProxyOverlord(), ...args);
         this.plannedCases = null; // TBD
-        this.proxy = new ProxyOverlord();
-    }
-
-    async startup() {
-        await this.proxy.start();
-    }
-
-    async shutdown() {
-        await this.proxy.stop();
     }
 
     async run(testRun) {

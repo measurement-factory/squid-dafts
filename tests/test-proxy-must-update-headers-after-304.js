@@ -18,6 +18,9 @@ import Test from "../src/test/Test";
 // TODO: Optionally tolerate any misses (mostly useful for parallel/life tests).
 
 export default class MyTest extends Test {
+    constructor(...args) {
+        super(null, ...args); // TODO: new ProxyOverlord(MyConfig)
+    }
 
     async run(/*testRun*/) {
 
