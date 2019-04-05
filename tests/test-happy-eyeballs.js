@@ -746,7 +746,7 @@ export default class MyTest extends Test {
                 console.log(`test case took ${actualTotalDelay.getTime()} vs. expected minimum of ${plannedDelay.getTime()} milliseconds`);
 
                 const allowedDelta = 2000 * milliseconds; // XXX 20 * StepSize * 0.90;
-                assert(actualDecisionDelay.getTime() > (plannedDelay.getTime()), "honored delays");
+                assert(actualDecisionDelay.getTime() >= (plannedDelay.getTime()), "honored delays");
                 assert(actualDecisionDelay.getTime() < (plannedDelay.getTime() + allowedDelta), "finished ASAP");
             });
             await testCase.run();
