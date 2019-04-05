@@ -13,13 +13,16 @@ import * as FuzzyTime from "../src/misc/FuzzyTime";
 import * as Gadgets from "../src/misc/Gadgets";
 import assert from "assert";
 import Test from "../src/test/Test";
+import { DutConfig, ProxyOverlord } from "../src/overlord/Proxy";
 
 
 // TODO: Optionally tolerate any misses (mostly useful for parallel/life tests).
 
 export default class MyTest extends Test {
     constructor(...args) {
-        super(null, ...args); // TODO: new ProxyOverlord(MyConfig)
+        const cfg = new DutConfig();
+        cfg.memoryCaching(true);
+        super(new ProxyOverlord(cfg), ...args);
     }
 
     async run(/*testRun*/) {
