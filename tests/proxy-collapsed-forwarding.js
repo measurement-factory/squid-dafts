@@ -5,18 +5,15 @@
 /* Tests whether an HTTP proxy caches a response
  * Parameters: [drop-Content-Length] [body size] */
 
-//import Promise from "bluebird";
-import Promise from "bluebird";
-import ProxyCase from "./ProxyCase";
+import HttpTestCase from "../src/test/HttpCase";
 import Body from "../src/http/Body";
 import Resource from "../src/anyp/Resource";
 import * as Gadgets from "../src/misc/Gadgets";
 import * as Config from "../src/misc/Config";
 import * as AddressPool from "../src/misc/AddressPool";
-import * as Http from "../src/http/Gadgets";
-import StartTests from "../src/misc/TestRunner";
 import { Must } from "../src/misc/Gadgets";
 import assert from "assert";
+import Test from "../src/test/Test";
 
 const BasePort = Config.ProxyListeningAddress.port;
 const Host = Config.ProxyListeningAddress.host;
@@ -41,7 +38,24 @@ Config.Recognize([
     },
 ]);
 
-async function DoTest(args) {
+export default class MyTest extends Test {
+
+    constructor(...args) {
+        // XXX: We should not be writing constructors to configure a DUT.
+        // TODO: Add virtual Test::configureDut() or a similar method.
+        super(null, ...args); // no DUT for now
+    }
+
+    async run(/*testRun*/) {
+
+    Must(Config.Requests > 1);
+
+    // TODO: Remove args. Use Config directly instead.
+    const args = {
+        workers: Config.Workers,
+        requests: Config.Requests
+    };
+
     let resource = new Resource();
     resource.makeCachable();
     resource.uri.address = AddressPool.ReserveListeningAddress();
@@ -55,25 +69,25 @@ async function DoTest(args) {
     // need this for pids checking for SMP
     let pids = [2];
 
-    let collapseCase = new ProxyCase('collapse on the existing transaction', collapseAddr);
+    let collapseCase = new HttpTestCase('collapse on the existing transaction', collapseAddr);
     collapseCase.client().request.for(resource);
-    let requests = args.requests - 2;;
+    collapseCase.client().nextHopAddress = collapseAddr;
+    let requests = args.requests - 2;
     if (requests > 0) {
-        let proxyAddresses = [];
         for (let i = 2; i < args.workers; ++i) {
-            proxyAddresses.push(ProxyListeningAddresses[i]);
             pids.push(i+1);
             if (--requests === 0)
                 break;
         }
-        while(requests > 0) {
+        for (let clientId = 1; clientId <= requests; ++clientId) {
             const lastPid = pids[pids.length-1];
             pids.push(lastPid);
-            proxyAddresses.push(ProxyListeningAddresses[args.workers - 1]);
-            requests--;
+
+            let client = collapseCase.addClient();
+            const lastAddress = ProxyListeningAddresses[args.workers - 1]; // XXX: Why that? Why does not it change with the request/worker?
+            client.nextHopAddress = lastAddress;
         }
 
-        collapseCase.addClients(collapseCase.client(), args.requests - 2, proxyAddresses);
     }
     collapseCase.check(() => {
         let pidIdx = 0;
@@ -92,19 +106,19 @@ async function DoTest(args) {
     });
 
 
-    let initiatorCase = new ProxyCase('initiate a transaction', initiatorAddr);
+    let initiatorCase = new HttpTestCase('initiate a transaction', initiatorAddr);
     initiatorCase.client().request.for(resource);
     initiatorCase.check(() => {
         assert(initiatorCase.client().transaction().response, "Proxy must send a response");
         initiatorCase.expectStatusCode(200);
-        const initiatorPid = initiatorCase.client().transaction().response.proxyPid();
+        //const initiatorPid = initiatorCase.client().transaction().response.proxyPid();
         const initiatorTag = initiatorCase.client().transaction().response.tag();
         assert.equal(initiatorTag, "first", "Squid collapsing initiator worker X-Daft-Response-Tag");
         let responseBody = initiatorCase.client().transaction().response.body.whole();
         assert.equal(responseBody, resource.body.whole(), "Served response body");
     });
 
-    let serverCase = new ProxyCase('serve a response');
+    let serverCase = new HttpTestCase('serve a response');
     serverCase.server().response.tag("first");
     serverCase.serverWillWaitForClients([collapseCase]);
     serverCase.server().serve(resource);
@@ -126,16 +140,4 @@ async function DoTest(args) {
     AddressPool.ReleaseListeningAddress(resource.uri.address);
 }
 
-async function Test(testRun, callback) {
-
-    Must(Config.Requests > 1);
-
-    await DoTest({workers: Config.Workers, requests: Config.Requests});
-
-    console.log("Test result: success");
-    if (callback)
-        callback();
 }
-
-StartTests(Test);
-
