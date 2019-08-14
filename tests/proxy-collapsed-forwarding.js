@@ -55,7 +55,8 @@ export default class MyTest extends Test {
         cfg.workers(Config.Workers);
         cfg.dedicatedWorkerPorts(true);
         cfg.collapsedForwarding(true);
-        cfg.memoryCaching(true); // TODO: And/or disk caching (via Config).
+        cfg.memoryCaching(true); // TODO: Make Configurable.
+        cfg.diskCaching(true); // TODO: Make Configurable.
         super(new ProxyOverlord(cfg), ...args); // no DUT for now
 
         this._workerListeningAddresses = cfg.workerListeningAddresses();
