@@ -22,7 +22,7 @@ import { DutConfig, ProxyOverlord } from "../src/overlord/Proxy";
 const WorkerLimit = 8;
 let CollapsedRequestsType = "{each:Maybe Number";
 for (let i = 0; i < WorkerLimit; ++i) {
-    CollapsedRequestsType += `,${i+1}:Maybe Number`;
+    CollapsedRequestsType += `,${i + 1}:Maybe Number`;
 }
 CollapsedRequestsType += "}";
 
@@ -32,7 +32,7 @@ Config.Recognize([
         type: "Number",
         default: "4",
         description: "the number of Squid SMP workers",
-        // TODO: Validate: workers <= WorkerLimit.
+    // TODO: Validate: workers <= WorkerLimit.
     },
     {
         // The miss transaction always goes through the first worker.
@@ -70,8 +70,8 @@ export default class MyTest extends Test {
         // convert Config.CollapsedRequests (which may not specify some
         // workers and/or have an "each" macro) into collapsedRequestsForWorker
         const defaultRequests = 'each' in Config.CollapsedRequests ?
-                Config.CollapsedRequests.each : 0;
-        let collapsedRequestsForWorker = Array(1+Config.Workers).fill(defaultRequests);
+            Config.CollapsedRequests.each : 0;
+        let collapsedRequestsForWorker = Array(1 + Config.Workers).fill(defaultRequests);
         for (let workerLabel of Object.keys(Config.CollapsedRequests)) {
             if (workerLabel === "each") // handled above
                 continue;
@@ -111,8 +111,8 @@ export default class MyTest extends Test {
 
                 // technically, reaching the proxy is enough, but we cannot detect/wait for that
                 hitClient.transaction().blockSendingUntil(
-                        testCase.server().transaction().receivedEverything(),
-                        "wait for the miss request to reach the server");
+                    testCase.server().transaction().receivedEverything(),
+                    "wait for the miss request to reach the server");
 
                 hitClient.expectStatusCode(200);
                 hitClient.checks.add((client) => {
@@ -134,6 +134,6 @@ export default class MyTest extends Test {
         await testCase.run();
 
         AddressPool.ReleaseListeningAddress(resource.uri.address);
-}
+    }
 
 }
