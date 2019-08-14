@@ -21,7 +21,12 @@ import { DutConfig, ProxyOverlord } from "../src/overlord/Proxy";
 export default class MyTest extends Test {
     constructor(...args) {
         const cfg = new DutConfig();
-        cfg.memoryCaching(true);
+
+        // TODO: Make configurable, trying all three sensible combinations by default.
+        // TODO: Try all three sensible combinations (by default).
+        cfg.memoryCaching(false);
+        cfg.diskCaching(true);
+
         super(new ProxyOverlord(cfg), ...args);
     }
 
