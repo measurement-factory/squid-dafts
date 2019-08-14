@@ -80,8 +80,13 @@ export default class MyTest extends Test {
 
             testCase.check(() => {
                 testCase.expectStatusCode(200);
-                // XXX: Check the headers.
                 updatingResponse = testCase.server().transaction().response;
+                const receivedResponse = testCase.client().transaction().response;
+                assert.equal(updatingResponse.tag(), receivedResponse.tag(), "relayed X-Daft-Response-Tag");
+                assert.equal(updatingResponse.id(), receivedResponse.id(), "relayed X-Daft-Response-ID");
+                assert.equal(receivedResponse.header.values("Last-Modified"), resource.lastModificationTime.toUTCString(), "relayed Last-Modified");
+                assert.equal(receivedResponse.header.values("Expires"), resource.nextModificationTime.toUTCString(), "relayed Expires");
+                assert.equal(receivedResponse.header.value(hitCheck.name), hitCheck.value, "preserved originally cached header field");
             });
 
             await testCase.run();
