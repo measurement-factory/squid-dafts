@@ -41,7 +41,7 @@ export default class MyTest extends Test {
 
         // This header appears in the initially cached response.
         // This header does not appear in the updatingResponse.
-        // This header must upppear in the updatedResponse.
+        // This header must appear in the updatedResponse.
         const hitCheck = new Field("X-Daft-Hit-Check", Gadgets.UniqueId("check"));
 
         {
@@ -54,7 +54,7 @@ export default class MyTest extends Test {
         }
 
         {
-            let testCase = new HttpTestCase('respond with a 304 hit');
+            let testCase = new HttpTestCase('check that the response was cached');
             testCase.client().request.for(resource);
             testCase.client().request.conditions({ ims: resource.notModifiedSince() });
             testCase.check(() => {
@@ -65,7 +65,7 @@ export default class MyTest extends Test {
 
         let updatingResponse = null; // TBD
         {
-            let testCase = new HttpTestCase('miss and get a 304 that updates the previously cached response');
+            let testCase = new HttpTestCase('force a 304 miss that updates the previously cached response');
 
             resource.modifyNow();
             resource.expireAt(FuzzyTime.DistantFuture());
@@ -93,7 +93,7 @@ export default class MyTest extends Test {
         }
 
         {
-            let testCase = new HttpTestCase('hit updated headers');
+            let testCase = new HttpTestCase('check whether the cached headers got updated');
             testCase.client().request.for(resource);
             testCase.check(() => {
                 testCase.expectStatusCode(200);
