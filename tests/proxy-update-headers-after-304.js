@@ -50,6 +50,10 @@ export default class MyTest extends Test {
             testCase.server().serve(resource);
             testCase.server().response.tag("first");
             testCase.server().response.header.add(hitCheck);
+
+            testCase.server().response.header.addWarning(199, "MUST be removed");
+            testCase.server().response.header.addWarning(299, "MUST be preserved");
+
             await testCase.run();
         }
 
@@ -103,6 +107,8 @@ export default class MyTest extends Test {
                 assert.equal(updatedResponse.header.values("Last-Modified"), resource.lastModificationTime.toUTCString(), "updated Last-Modified");
                 assert.equal(updatedResponse.header.values("Expires"), resource.nextModificationTime.toUTCString(), "updated Expires");
                 assert.equal(updatedResponse.header.value(hitCheck.name), hitCheck.value, "preserved originally cached header field");
+                assert(!updatedResponse.header.hasWarning(199), "removed an 1xx Warning");
+                assert(updatedResponse.header.hasWarning(299), "preserved a 2xx Warning");
             });
             await testCase.run();
         }
