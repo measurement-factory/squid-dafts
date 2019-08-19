@@ -11,9 +11,20 @@ import Resource from "../src/anyp/Resource";
 import * as AddressPool from "../src/misc/AddressPool";
 import * as FuzzyTime from "../src/misc/FuzzyTime";
 import * as Gadgets from "../src/misc/Gadgets";
+import * as Config from "../src/misc/Config";
 import assert from "assert";
 import Test from "../src/test/Test";
 import { DutConfig, ProxyOverlord } from "../src/overlord/Proxy";
+
+
+Config.Recognize([
+    {
+        option: "workers",
+        type: "Number",
+        default: "4",
+        description: "the number of proxy SMP workers",
+    },
+]);
 
 
 // TODO: Optionally tolerate any misses (mostly useful for parallel/life tests).
@@ -22,21 +33,28 @@ export default class MyTest extends Test {
     constructor(...args) {
         const cfg = new DutConfig();
 
+        cfg.workers(Config.Workers);
+        cfg.dedicatedWorkerPorts(true);
+
         // TODO: Make configurable, trying all three sensible combinations by default.
         // TODO: Try all three sensible combinations (by default).
         cfg.memoryCaching(false);
         cfg.diskCaching(true);
 
         super(new ProxyOverlord(cfg), ...args);
+
+        this._workerListeningAddresses = cfg.workerListeningAddresses();
     }
 
     async run(/*testRun*/) {
+        // XXX: unconditional this._workerListeningAddresses[3] access below
+        assert(Config.Workers >= 3);
 
         let resource = new Resource();
         resource.uri.address = AddressPool.ReserveListeningAddress();
         resource.modifiedAt(FuzzyTime.DistantPast());
         resource.expireAt(FuzzyTime.Soon());
-        resource.body = new Body("x".repeat(64*1024));
+        resource.body = new Body("x".repeat(7));
         resource.finalize();
 
         // This header appears in the initially cached response.
@@ -44,12 +62,20 @@ export default class MyTest extends Test {
         // This header must appear in the updatedResponse.
         const hitCheck = new Field("X-Daft-Hit-Check", Gadgets.UniqueId("check"));
 
+        // This header starts small in the initially cached response
+        // but becomes large in the updatingResponse.
+        let growingHeader = new Field("X-Daft-Growing", "small");
+
         {
             let testCase = new HttpTestCase('forward a cachable response');
+
+            testCase.client().nextHopAddress = this._workerListeningAddresses[1];
             testCase.client().request.for(resource);
+
             testCase.server().serve(resource);
             testCase.server().response.tag("first");
             testCase.server().response.header.add(hitCheck);
+            testCase.server().response.header.add(growingHeader);
 
             testCase.server().response.header.addWarning(199, "MUST be removed");
             testCase.server().response.header.addWarning(299, "MUST be preserved");
@@ -66,8 +92,11 @@ export default class MyTest extends Test {
 
         {
             let testCase = new HttpTestCase('check that the response was cached');
+
+            testCase.client().nextHopAddress = this._workerListeningAddresses[1];
             testCase.client().request.for(resource);
             testCase.client().request.conditions({ ims: resource.notModifiedSince() });
+
             testCase.check(() => {
                 testCase.expectStatusCode(304);
                 const receivedResponse = testCase.client().transaction().response;
@@ -84,6 +113,9 @@ export default class MyTest extends Test {
             resource.modifyNow();
             resource.expireAt(FuzzyTime.DistantFuture());
 
+            growingHeader.value = "la" + "A".repeat(100) + "rge";
+
+            testCase.client().nextHopAddress = this._workerListeningAddresses[2];
             testCase.client().request.for(resource);
             testCase.client().request.conditions({ ims: resource.modifiedSince() });
             testCase.client().request.header.add("Cache-Control", "max-age=0");
@@ -91,6 +123,7 @@ export default class MyTest extends Test {
             testCase.server().serve(resource);
             testCase.server().response.tag("second");
             testCase.server().response.startLine.statusCode = 304;
+            testCase.server().response.header.add(growingHeader);
 
             testCase.check(() => {
                 testCase.expectStatusCode(200);
@@ -110,7 +143,10 @@ export default class MyTest extends Test {
 
         {
             let testCase = new HttpTestCase('check whether the cached headers got updated');
+
+            testCase.client().nextHopAddress = this._workerListeningAddresses[3];
             testCase.client().request.for(resource);
+
             testCase.check(() => {
                 testCase.expectStatusCode(200);
                 let updatedResponse = testCase.client().transaction().response;
@@ -129,8 +165,11 @@ export default class MyTest extends Test {
         {
             let testCase = new HttpTestCase('cleanup leftovers using a cachable response');
             resource.uri.makeUnique();
+
+            testCase.client().nextHopAddress = this._workerListeningAddresses[1];
             testCase.client().request.for(resource);
             testCase.client().request.tag("cleanup");
+
             testCase.server().serve(resource);
             testCase.server().response.tag("cleanup");
             await testCase.run();
