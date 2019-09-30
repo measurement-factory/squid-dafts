@@ -93,8 +93,8 @@ export default class MyTest extends Test {
         let missClient = testCase.client();
         missClient.request.for(resource);
         missClient.nextHopAddress = this._workerListeningAddresses[1];
-        missClient.expectStatusCode(200);
         missClient.checks.add((client) => {
+            client.expectStatusCode(200);
             assert(client.transaction().response, "Proxy must send a response");
             const initiatorTag = client.transaction().response.tag();
             assert.equal(initiatorTag, "first", "Squid collapsing initiator worker X-Daft-Response-Tag XXX");
@@ -114,8 +114,8 @@ export default class MyTest extends Test {
                     testCase.server().transaction().receivedEverything(),
                     "wait for the miss request to reach the server");
 
-                hitClient.expectStatusCode(200);
                 hitClient.checks.add((client) => {
+                    client.expectStatusCode(200);
                     // XXX: Revise hit checks. Remove duplication. Move to a method?
                     assert(client.transaction().response, "Proxy must send a response");
                     const initiatorTag = client.transaction().response.tag();
