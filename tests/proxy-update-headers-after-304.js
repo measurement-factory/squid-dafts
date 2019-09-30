@@ -80,9 +80,9 @@ export default class MyTest extends Test {
             testCase.server().response.header.addWarning(199, "MUST be removed");
             testCase.server().response.header.addWarning(299, "MUST be preserved");
 
-            testCase.check(() => {
-                testCase.expectStatusCode(200);
-                const receivedResponse = testCase.client().transaction().response;
+            testCase.client().checks.add((client) => {
+                client.expectStatusCode(200);
+                const receivedResponse = client.transaction().response;
                 assert(receivedResponse.header.hasWarning(199), "DUT forwarded an 1xx Warning");
                 assert(receivedResponse.header.hasWarning(299), "DUT forwarded a 2xx Warning");
             });
@@ -97,9 +97,9 @@ export default class MyTest extends Test {
             testCase.client().request.for(resource);
             testCase.client().request.conditions({ ims: resource.notModifiedSince() });
 
-            testCase.check(() => {
-                testCase.expectStatusCode(304);
-                const receivedResponse = testCase.client().transaction().response;
+            testCase.client().checks.add((client) => {
+                client.expectStatusCode(304);
+                const receivedResponse = client.transaction().response;
                 assert(!receivedResponse.header.hasWarning(199), "DUT did not generate an 1xx Warning");
                 assert(!receivedResponse.header.hasWarning(299), "DUT did not generate a 2xx Warning");
             });
@@ -126,7 +126,7 @@ export default class MyTest extends Test {
             testCase.server().response.header.add(growingHeader);
 
             testCase.check(() => {
-                testCase.expectStatusCode(200);
+                testCase.client().expectStatusCode(200);
                 updatingResponse = testCase.server().transaction().response;
                 const receivedResponse = testCase.client().transaction().response;
                 assert.equal(updatingResponse.tag(), receivedResponse.tag(), "relayed X-Daft-Response-Tag");
@@ -147,9 +147,9 @@ export default class MyTest extends Test {
             testCase.client().nextHopAddress = this._workerListeningAddresses[3];
             testCase.client().request.for(resource);
 
-            testCase.check(() => {
-                testCase.expectStatusCode(200);
-                let updatedResponse = testCase.client().transaction().response;
+            testCase.client().checks.add((client) => {
+                client.expectStatusCode(200);
+                let updatedResponse = client.transaction().response;
                 assert.equal(updatedResponse.tag(), updatingResponse.tag(), "updated X-Daft-Response-Tag");
                 assert.equal(updatedResponse.id(), updatingResponse.id(), "updated X-Daft-Response-ID");
                 assert.equal(updatedResponse.header.values("Last-Modified"), resource.lastModificationTime.toUTCString(), "updated Last-Modified");
