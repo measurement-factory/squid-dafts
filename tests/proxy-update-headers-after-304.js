@@ -163,6 +163,12 @@ export default class MyTest extends Test {
         }
 
         {
+            // With the right cache size, this test case forces the DUT to reuse
+            // old (and now freed) index entries _and_ flush them to disk.
+            // Without it, restarting the proxy after the test may bring old
+            // entries back or produce other confusing results. TODO: We should
+            // actually restart the DUT to check that it has flushed its state.
+            // It is not clear whether that should be done in this test though.
             let testCase = new HttpTestCase('cleanup leftovers using a cachable response');
             resource.uri.makeUnique();
 
