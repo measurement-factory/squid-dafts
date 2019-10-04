@@ -1,6 +1,6 @@
-/* Daft Toolkit                         http://www.measurement-factory.com/
- * Copyright (C) 2015,2016 The Measurement Factory.
- * Licensed under the Apache License, Version 2.0.                       */
+// Daft-based Squid Tests
+// Copyright (C) The Measurement Factory.
+// http://www.measurement-factory.com/
 
 // Proxy MUST update previously cached headers on 304 responses.
 

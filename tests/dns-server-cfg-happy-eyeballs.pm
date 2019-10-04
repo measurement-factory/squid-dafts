@@ -1,3 +1,7 @@
+# Daft-based Squid Tests
+# Copyright (C) The Measurement Factory.
+# http://www.measurement-factory.com/
+
 $SummarizeEachTransaction = 1;
 
 $main::ForwardingAddresses = [ qw(8.8.8.8) ];

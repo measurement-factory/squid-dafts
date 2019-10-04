@@ -1,6 +1,6 @@
-/* Daft Toolkit                         http://www.measurement-factory.com/
- * Copyright (C) 2015,2016 The Measurement Factory.
- * Licensed under the Apache License, Version 2.0.                       */
+// Daft-based Squid Tests
+// Copyright (C) The Measurement Factory.
+// http://www.measurement-factory.com/
 
 // Check whether proxy-introduced delays match proxy configuration.
 // The current focus is on Squid's response_delay_pool directive.

@@ -1,0 +1,4 @@
+// Daft-based Squid Tests
+// Copyright (C) The Measurement Factory.
+// http://www.measurement-factory.com/
+

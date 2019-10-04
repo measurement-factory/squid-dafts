@@ -1,3 +1,7 @@
+// Daft-based Squid Tests
+// Copyright (C) The Measurement Factory.
+// http://www.measurement-factory.com/
+
 import Promise from "bluebird";
 import * as Config from "../src/misc/Config";
 import * as AddressPool from "../src/misc/AddressPool";
