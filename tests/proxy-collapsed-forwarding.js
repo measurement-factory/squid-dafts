@@ -3,7 +3,7 @@
 // http://www.measurement-factory.com/
 
 // Tests whether an HTTP proxy can merge concurrently received requests into a
-// single sent request.
+// single sent request. Also tests cache hit delivery to concurrent clients.
 
 import assert from "assert";
 import HttpTestCase from "../src/test/HttpCase";
@@ -26,6 +26,13 @@ for (let i = 0; i < WorkerLimit; ++i) {
 }
 CollapsedRequestsType += "}";
 
+// all clients arrive before response headers
+const soTrueCollapsing = "ch-sh-sb";
+// all-but-one clients arrive after the proxy gets the response headers
+const soLiveFeeding = "sh-ch-sb";
+// all-but-one clients arrive after the proxy gets the response body
+const soPureHits = "sh-sb-ch";
+
 Config.Recognize([
     {
         option: "workers",
@@ -43,7 +50,20 @@ Config.Recognize([
         type: CollapsedRequestsType,
         default: "{each:2}",
         description: "the number of collapsed requests for each worker",
-    }
+    },
+    {
+        // Here "clients" means all clients except the very 1st client that
+        // always starts the transaction. "c" is client, "s" is server, h" is
+        // sent message headers, and "b" is sent message body.
+        option: "sending-order",
+        type: "String",
+        enum: [soTrueCollapsing, soLiveFeeding, soPureHits],
+        default: soTrueCollapsing,
+        description: "\n" +
+            "\tch-sh-sb (clients send headers before server sends headers)\n"+
+            "\tsh-ch-sb (server sends headers before clients send headers)\n"+
+            "\tsh-sb-ch (server sends body before clients send headers)\n",
+    },
 ]);
 
 export default class MyTest extends Test {
@@ -98,17 +118,11 @@ export default class MyTest extends Test {
             testCase.makeClients(collapsedRequestsForWorker[worker], (hitClient) => {
                 hitClient.request.for(resource);
                 hitClient.nextHopAddress = this._workerListeningAddresses[worker];
-
-                // technically, reaching the proxy is enough, but we cannot detect/wait for that
-                hitClient.transaction().blockSendingUntil(
-                    testCase.server().transaction().receivedEverything(),
-                    "wait for the miss request to reach the server");
+                this._blockClient(hitClient, missClient, testCase);
             });
         }
 
-        testCase.server().transaction().blockSendingUntil(
-            testCase.clientsSentEverything(),
-            "wait for all clients to collapse");
+        this._blockServer(testCase);
 
         testCase.addMissCheck();
 
@@ -117,4 +131,52 @@ export default class MyTest extends Test {
         AddressPool.ReleaseListeningAddress(resource.uri.address);
     }
 
+    _blockClient(hitClient, missClient, testCase) {
+        if (Config.SendingOrder === soTrueCollapsing) {
+            // technically, reaching the proxy is enough, but we cannot detect/wait for that
+            hitClient.transaction().blockSendingUntil(
+                testCase.server().transaction().receivedEverything(),
+                "wait for the miss request to reach the server");
+            return;
+        }
+
+        if (Config.SendingOrder === soLiveFeeding) {
+            hitClient.transaction().blockSendingUntil(
+                missClient.transaction().receivedHeaders(),
+                "wait for the miss response headers to reach the 1st client");
+            return;
+        }
+
+        if (Config.SendingOrder === soPureHits) {
+            hitClient.transaction().blockSendingUntil(
+                missClient.transaction().receivedEverything(),
+                "wait for the whole miss response to reach the 1st client");
+            return;
+        }
+
+        assert(false); // not reached
+    }
+
+    _blockServer(testCase) {
+        if (Config.SendingOrder === soTrueCollapsing) {
+            testCase.server().transaction().blockSendingUntil(
+                testCase.clientsSentEverything(),
+                "wait for all clients to collapse");
+            return;
+        }
+
+        if (Config.SendingOrder === soLiveFeeding) {
+            testCase.server().transaction().blockSendingBodyUntil(
+                testCase.clientsSentEverything(),
+                "wait for all clients to send requests");
+            return;
+        }
+
+        if (Config.SendingOrder === soPureHits) {
+            // no need to delay the server
+            return;
+        }
+
+        assert(false); // not reached
+    }
 }
