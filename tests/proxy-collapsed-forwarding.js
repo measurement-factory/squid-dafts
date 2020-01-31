@@ -2,8 +2,8 @@
 // Copyright (C) The Measurement Factory.
 // http://www.measurement-factory.com/
 
-/* Tests whether an HTTP proxy caches a response
- * Parameters: [drop-Content-Length] [body size] */
+// Tests whether an HTTP proxy can merge concurrently received requests into a
+// single sent request.
 
 import assert from "assert";
 import HttpTestCase from "../src/test/HttpCase";
@@ -89,19 +89,9 @@ export default class MyTest extends Test {
 
         let testCase = new HttpTestCase('one and only'); // TODO: Use a testRun-based label
         testCase.server().serve(resource);
-        testCase.server().response.tag("first");
         let missClient = testCase.client();
         missClient.request.for(resource);
         missClient.nextHopAddress = this._workerListeningAddresses[1];
-        missClient.checks.add((client) => {
-            client.expectStatusCode(200);
-            assert(client.transaction().response, "Proxy must send a response");
-            const initiatorTag = client.transaction().response.tag();
-            assert.equal(initiatorTag, "first", "Squid collapsing initiator worker X-Daft-Response-Tag XXX");
-            let responseBody = client.transaction().response.body.whole();
-            // XXX: Don't we have a message comparison function?
-            assert.equal(responseBody, resource.body.whole(), "Got response body");
-        });
 
         // add clients for each worker; they should all collapse on missClient
         for (let worker = 1; worker <= Config.Workers; ++worker) {
@@ -113,23 +103,14 @@ export default class MyTest extends Test {
                 hitClient.transaction().blockSendingUntil(
                     testCase.server().transaction().receivedEverything(),
                     "wait for the miss request to reach the server");
-
-                hitClient.checks.add((client) => {
-                    client.expectStatusCode(200);
-                    // XXX: Revise hit checks. Remove duplication. Move to a method?
-                    assert(client.transaction().response, "Proxy must send a response");
-                    const initiatorTag = client.transaction().response.tag();
-                    assert.equal(initiatorTag, "first", "Squid collapsing initiator worker X-Daft-Response-Tag XXX");
-                    let responseBody = client.transaction().response.body.whole();
-                    // XXX: Don't we have a message comparison function?
-                    assert.equal(responseBody, resource.body.whole(), "Got response body");
-                });
             });
         }
 
         testCase.server().transaction().blockSendingUntil(
             testCase.clientsSentEverything(),
             "wait for all clients to collapse");
+
+        testCase.addMissCheck();
 
         await testCase.run();
 
