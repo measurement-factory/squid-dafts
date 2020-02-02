@@ -104,7 +104,6 @@ export default class MyTest extends Test {
         let resource = new Resource();
         resource.makeCachable();
         resource.uri.address = AddressPool.ReserveListeningAddress();
-        resource.body = new Body(Gadgets.UniqueId("body-"));
         resource.finalize();
 
         let testCase = new HttpTestCase('one and only'); // TODO: Use a testRun-based label

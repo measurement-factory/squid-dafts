@@ -54,7 +54,6 @@ export default class MyTest extends Test {
         resource.uri.address = AddressPool.ReserveListeningAddress();
         resource.modifiedAt(FuzzyTime.DistantPast());
         resource.expireAt(FuzzyTime.Soon());
-        resource.body = new Body("x".repeat(7));
         resource.finalize();
 
         // This header appears in the initially cached response.
