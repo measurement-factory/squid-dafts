@@ -54,6 +54,10 @@ Config.Recognize([
     }
 ]);
 
+// TODO: Change --body-size default:
+// Config.Customize("body-size", {
+//     default: srvBodySize,
+// });
 const srvBodySize = 1000 * 1000; // 1 MB
 const maxDeviation = 10.0; // percent
 
