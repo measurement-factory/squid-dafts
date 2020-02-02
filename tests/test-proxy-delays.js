@@ -83,7 +83,7 @@ async function Test(testRun, callback) {
     let resource = new Resource();
     resource.uri.address = Gadgets.ReserveListeningAddress();
     resource.uri.makeUnique("/speed=" + Config.Speed + "/");
-    resource.body = new Body("x".repeat(srvBodySize));
+    resource.body = new Body(Gadgets.RandomText(srvBodySize));
 
     let testCase = new HttpTestCase(description);
     testCase.client().request.for(resource);
