@@ -13,8 +13,8 @@ import * as Gadgets from "../src/misc/Gadgets";
 import * as Config from "../src/misc/Config";
 import * as AddressPool from "../src/misc/AddressPool";
 import { Must } from "../src/misc/Gadgets";
-import Test from "../src/test/Test";
-import { DutConfig, ProxyOverlord } from "../src/overlord/Proxy";
+import Test from "../src/overlord/Test";
+import ConfigGen from "../src/test/ConfigGen";
 
 // Compute syntax specification for the --collapsed-requests option.
 // The WorkerLimit is only needed to keep --help output reasonable.
@@ -68,16 +68,39 @@ Config.Recognize([
 
 export default class MyTest extends Test {
 
-    constructor(...args) {
-        // XXX: We should not be writing constructors to configure a DUT.
-        // TODO: Add virtual Test::configureDut() or a similar method.
-        const cfg = new DutConfig();
-        cfg.workers(Config.Workers);
-        cfg.dedicatedWorkerPorts(true);
-        cfg.collapsedForwarding(true);
-        cfg.memoryCaching(true); // TODO: Make Configurable.
-        cfg.diskCaching(true); // TODO: Make Configurable.
-        super(new ProxyOverlord(cfg), ...args); // no DUT for now
+    static Configurators() {
+        const configGen = new ConfigGen();
+
+        configGen.addGlobalConfigVariation({sendingOrder: [
+            soTrueCollapsing,
+            soLiveFeeding,
+            soPureHits,
+        ]});
+
+        configGen.addGlobalConfigVariation({collapsedRequests: [
+            {each:1,1:0},
+            {each:2},
+        ]});
+
+        configGen.addGlobalConfigVariation({bodySize: [
+            // XXX: Http::One::Decoder.decode() asserts, probably because
+            // decodedAll() becomes true even before the first decode() call.
+            // 0,
+            Config.DefaultBodySize(),
+            Config.LargeBodySize(),
+        ]});
+
+        // TODO: Chunking.
+
+        return configGen.generateConfigurators();
+    }
+
+    _configureDut(cfg) {
+        cfg.workers(Config.Workers); // TODO: This should be the default.
+        cfg.dedicatedWorkerPorts(true); // TODO: This should be the default.
+        cfg.memoryCaching(true); // TODO: Make configurable.
+        cfg.diskCaching(true); // TODO: Make configurable.
+        cfg.collapsedForwarding(Config.SendingOrder === soTrueCollapsing);
 
         this._workerListeningAddresses = cfg.workerListeningAddresses();
     }

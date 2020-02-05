@@ -13,9 +13,7 @@ import * as FuzzyTime from "../src/misc/FuzzyTime";
 import * as Gadgets from "../src/misc/Gadgets";
 import * as Config from "../src/misc/Config";
 import assert from "assert";
-import Test from "../src/test/Test";
-import { DutConfig, ProxyOverlord } from "../src/overlord/Proxy";
-
+import Test from "../src/overlord/Test";
 
 Config.Recognize([
     {
@@ -30,9 +28,7 @@ Config.Recognize([
 // TODO: Optionally tolerate any misses (mostly useful for parallel/life tests).
 
 export default class MyTest extends Test {
-    constructor(...args) {
-        const cfg = new DutConfig();
-
+    _configureDut(cfg) {
         cfg.workers(Config.Workers);
         cfg.dedicatedWorkerPorts(true);
 
@@ -40,8 +36,6 @@ export default class MyTest extends Test {
         // TODO: Try all three sensible combinations (by default).
         cfg.memoryCaching(false);
         cfg.diskCaching(true);
-
-        super(new ProxyOverlord(cfg), ...args);
 
         this._workerListeningAddresses = cfg.workerListeningAddresses();
     }

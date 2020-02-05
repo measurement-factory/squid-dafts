@@ -8,8 +8,7 @@ import * as AddressPool from "../src/misc/AddressPool";
 import HttpTestCase from "../src/test/HttpCase";
 import * as Gadgets from "../src/misc/Gadgets";
 import assert from "assert";
-import Test from "../src/test/Test";
-import { DutConfig, ProxyOverlord } from "../src/overlord/Proxy";
+import Test from "../src/overlord/Test";
 
 /* for time conversion to milliseconds */
 const milliseconds = 1;
@@ -697,8 +696,7 @@ function makeTestCases() {
 
 export default class MyTest extends Test {
     constructor(...args) {
-        const cfg = new DutConfig();
-        super(new ProxyOverlord(cfg), ...args);
+        super(...args);
         this.plannedCases = null; // TBD
     }
 
