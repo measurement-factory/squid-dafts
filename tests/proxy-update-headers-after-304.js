@@ -115,7 +115,7 @@ export default class MyTest extends Test {
 
             testCase.server().serve(resource);
             testCase.server().response.tag("second");
-            testCase.server().response.startLine.statusCode = 304;
+            testCase.server().response.startLine.code(304);
             testCase.server().response.header.add(growingHeader);
 
             testCase.check(() => {

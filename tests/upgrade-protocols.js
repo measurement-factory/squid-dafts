@@ -427,8 +427,7 @@ export default class MyTest extends Test {
         testCase.client().request.header.prohibitNamed("Content-Length");
         testCase.client().request.header.prohibitNamed("Transfer-Encoding");
 
-        testCase.server().response.startLine.statusCode = 101;
-        testCase.server().response.startLine.reasonPhrase = "Switching Protocols";
+        testCase.server().response.startLine.code(101);
         if (cfg.serverHeaders())
             testCase.server().response.header.addMany(...cfg.serverHeaders());
         testCase.server().response.header.add("Connection", "Upgrade");
