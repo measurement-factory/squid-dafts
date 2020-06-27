@@ -92,6 +92,13 @@ export default class MyTest extends Test {
 
         // TODO: Chunking.
 
+        configGen.addGlobalConfigAdjustment('retries', config => {
+            if (config.SendingOrder != soTrueCollapsing) {
+                const attempts = config.Tests === undefined ? 10 : config.Tests;
+                config.use({retries: attempts-1});
+            }
+        });
+
         return configGen.generateConfigurators();
     }
 
