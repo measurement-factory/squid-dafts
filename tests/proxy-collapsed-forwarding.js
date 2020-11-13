@@ -107,7 +107,7 @@ export default class MyTest extends Test {
         cfg.dedicatedWorkerPorts(true); // TODO: This should be the default.
         cfg.memoryCaching(true); // TODO: Make configurable.
         cfg.diskCaching(true); // TODO: Make configurable.
-        cfg.collapsedForwarding(Config.SendingOrder === soTrueCollapsing);
+        cfg.collapsedForwarding(Config.SendingOrder === soTrueCollapsing); // TODO: Make configurable.
 
         this._workerListeningAddresses = cfg.workerListeningAddresses();
     }
@@ -156,6 +156,13 @@ export default class MyTest extends Test {
         testCase.addMissCheck();
 
         await testCase.run();
+
+        let afterCase = new HttpTestCase('afterwards');
+        let afterClient = afterCase.client();
+        afterClient.request.for(resource);
+        afterClient.nextHopAddress = this._workerListeningAddresses[1];
+        afterCase.addHitCheck(testCase.server().transaction().response);
+        await afterCase.run();
 
         AddressPool.ReleaseListeningAddress(resource.uri.address);
     }
