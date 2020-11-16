@@ -28,15 +28,22 @@ Config.Recognize([
             "(i.e. transactions that DUT should delay)",
     },
     {
+        option: "delay-class",
+        type: "String",
+        enum: ["response", "1", "3"],
+        default: "response",
+        description: "response_delay_pool or a delay_class N",
+    },
+    {
         option: "bucket-speed-limit",
-        type: "Number",
+        type: "Number", // bytes/s
         default: "50000",
-        description: "response_delay_pool's individual-restore",
+        description: "*delay_pool's individual-restore",
     },
     {
         option: "aggregate-speed-limit",
-        type: "Number",
-        description: "response_delay_pool's aggregate-restore",
+        type: "Number", // bytes/s
+        description: "*delay_pool's aggregate-restore",
     }
 ]);
 
@@ -63,19 +70,54 @@ export default class MyTest extends Test {
             "fast",
         ]});
 
+        configGen.addGlobalConfigVariation({delayClass: [
+            "response",
+            "1",
+            "3",
+        ]});
+
         return configGen.generateConfigurators();
     }
 
 
     _configureDut(cfg) {
-        cfg.custom('acl slowResponse rep_header Speed ^slow');
-        cfg.custom('response_delay_pool slowPool ' +
-                   `individual-restore=${Config.BucketSpeedLimit} ` +
-                   'individual-maximum=100000 ' +
-                   `aggregate-restore=${Config.AggregateSpeedLimit} ` +
-                   'aggregate-maximum=200000 ' +
-                   'initial-bucket-level=90');
-        cfg.custom('response_delay_pool_access slowPool allow slowResponse');
+        cfg.custom('acl delayed urlpath_regex speed=slow');
+
+        // Keep this huge because our test assumes the restore rate never
+        // overflows the bucket. TODO: Test overflows as well.
+        const unlimited = Number.MAX_SAFE_INTEGER;
+
+        if (Config.DelayClass === "response") {
+            cfg.custom('response_delay_pool slowPool ' +
+                       `individual-restore=${Config.BucketSpeedLimit} ` +
+                       'individual-maximum=${unlimited} ' +
+                       `aggregate-restore=${Config.AggregateSpeedLimit} ` +
+                       'aggregate-maximum=${unlimited} ' +
+                       'initial-bucket-level=90');
+            cfg.custom('response_delay_pool_access slowPool allow delayed');
+            return;
+        }
+
+        if (Config.DelayClass === "1") {
+            cfg.custom('delay_pools 1');
+            cfg.custom('delay_class 1 1');
+            // delay_parameters pool-id aggregate
+            cfg.custom(`delay_parameters 1 ${Config.AggregateSpeedLimit}/${unlimited}`);
+            cfg.custom('delay_access 1 allow delayed');
+            return;
+        }
+
+        if (Config.DelayClass === "3") {
+            cfg.custom('delay_pools 1');
+            cfg.custom('delay_class 1 3');
+            // delay_parameters pool-id aggregate network individual
+            cfg.custom(`delay_parameters 1 none none ${Config.BucketSpeedLimit}/${unlimited}`);
+            cfg.custom('delay_access 1 allow delayed');
+            // XXX: Disable IPv6 -- individual buckets do not support it!
+            return;
+        }
+
+        assert(false); // CLI options parser missed an unknown --delay-class
     }
 
 
@@ -104,6 +146,7 @@ export default class MyTest extends Test {
         resource.body = new Body(Gadgets.RandomText("body-", Config.BodySize));
 
         let testCase = new HttpTestCase(description);
+        testCase.expectLongerRuntime(new Date(1000 /* ms */ * Config.BodySize / Config.BucketSpeedLimit));
         testCase.client().request.for(resource);
         testCase.server().serve(resource);
         testCase.server().response.header.add("Speed", Config.Speed);
@@ -116,7 +159,6 @@ export default class MyTest extends Test {
             const endDate = testCase.client().transaction().receivedEverythingTime();
 
             const elapsedSec = (endDate.getTime() - startDate.getTime()) / 1000.0;
-            console.log("Transaction took " + elapsedSec.toFixed(1) + "s");
             const speed = Config.BodySize / elapsedSec;
             if (Config.Speed === "slow") {
                 const deviation = 100. * Math.abs(speed - expectedSpeed) / expectedSpeed;
