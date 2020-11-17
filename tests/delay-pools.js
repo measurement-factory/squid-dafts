@@ -85,7 +85,9 @@ export default class MyTest extends Test {
 
         // Keep this huge because our test assumes the restore rate never
         // overflows the bucket. TODO: Test overflows as well.
-        const unlimited = Number.MAX_SAFE_INTEGER;
+        // Use int32_t::max/2 to work around Squid delay_pools overflow bugs.
+        // TODO: const unlimited = Number.MAX_SAFE_INTEGER;
+        const unlimited = Math.floor((Math.pow(2, 32-1) - 1)/2);
 
         if (Config.DelayClass === "response") {
             cfg.custom('response_delay_pool slowPool ' +
@@ -113,6 +115,8 @@ export default class MyTest extends Test {
             // delay_parameters pool-id aggregate network individual
             cfg.custom(`delay_parameters 1 none none ${Config.BucketSpeedLimit}/${unlimited}`);
             cfg.custom('delay_access 1 allow delayed');
+            // prevent flooding the bucket with our `unlimited` level
+            cfg.custom('delay_initial_bucket_level 0');
             // XXX: Disable IPv6 -- individual buckets do not support it!
             return;
         }
