@@ -82,6 +82,7 @@ export default class MyTest extends Test {
 
     _configureDut(cfg) {
         cfg.custom('acl delayed urlpath_regex speed=slow');
+        this._sendXff = false; // may be reset below
 
         // Keep this huge because our test assumes the restore rate never
         // overflows the bucket. TODO: Test overflows as well.
@@ -117,7 +118,16 @@ export default class MyTest extends Test {
             cfg.custom('delay_access 1 allow delayed');
             // prevent flooding the bucket with our `unlimited` level
             cfg.custom('delay_initial_bucket_level 0');
-            // XXX: Disable IPv6 -- individual buckets do not support it!
+
+            // We add (fake) IPv4 Forwarded-For addresses to work around Squid
+            // inability to use individual buckets with IPv6 client addresses
+            // and so that each concurrent test case uses a different
+            // individual bucket.
+            this._sendXff = true;
+            cfg.custom('delay_pool_uses_indirect_client on');
+            cfg.custom('follow_x_forwarded_for allow all');
+            cfg.custom('acl fromLocalhost src 127.0.0.1/8');
+            cfg.custom('http_access allow fromLocalhost');
             return;
         }
 
@@ -125,7 +135,7 @@ export default class MyTest extends Test {
     }
 
 
-    async run(/*testRun*/) {
+    async run(testRun) {
         // do not log large body handling details by default
         if (Config.LogBodies === undefined && Config.BodySize > 1*1024*1024)
             Config.LogBodies = 0;
@@ -151,7 +161,17 @@ export default class MyTest extends Test {
 
         let testCase = new HttpTestCase(description);
         testCase.expectLongerRuntime(new Date(1000 /* ms */ * Config.BodySize / Config.BucketSpeedLimit));
+
         testCase.client().request.for(resource);
+        if (this._sendXff) {
+            const clientId = testRun.id;
+            // Squid does not use higher bits for indexing individual buckets;
+            // can be relaxed to only restrict IDs of _concurrent_ test cases
+            assert(clientId <= 255*255);
+            // TODO: Send both XFF and the recently standardized Forwarded-For?
+            testCase.client().request.header.add("X-Forwarded-For", Gadgets.Number2ipv4(clientId));
+        }
+
         testCase.server().serve(resource);
         testCase.server().response.header.add("Speed", Config.Speed);
 
