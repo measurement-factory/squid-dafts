@@ -35,13 +35,13 @@ Config.Recognize([
         description: "response_delay_pool or a delay_class N",
     },
     {
-        option: "bucket-speed-limit",
+        option: "individual-restore",
         type: "Number", // bytes/s
         default: "50000",
         description: "*delay_pool's individual-restore",
     },
     {
-        option: "aggregate-speed-limit",
+        option: "aggregate-restore",
         type: "Number", // bytes/s
         description: "*delay_pool's aggregate-restore",
     }
@@ -61,8 +61,8 @@ export default class MyTest extends Test {
         ]});
 
         // dynamic default
-        configGen.addGlobalConfigVariation({aggregateSpeedLimit: [
-            Config.BucketSpeedLimit * Config.ConcurrencyLevel
+        configGen.addGlobalConfigVariation({aggregateRestore: [
+            Config.IndividualRestore * Config.ConcurrencyLevel
         ]});
 
         configGen.addGlobalConfigVariation({speed: [
@@ -92,9 +92,9 @@ export default class MyTest extends Test {
 
         if (Config.DelayClass === "response") {
             cfg.custom('response_delay_pool slowPool ' +
-                       `individual-restore=${Config.BucketSpeedLimit} ` +
+                       `individual-restore=${Config.IndividualRestore} ` +
                        'individual-maximum=${unlimited} ' +
-                       `aggregate-restore=${Config.AggregateSpeedLimit} ` +
+                       `aggregate-restore=${Config.AggregateRestore} ` +
                        'aggregate-maximum=${unlimited} ' +
                        'initial-bucket-level=90');
             cfg.custom('response_delay_pool_access slowPool allow delayed');
@@ -105,7 +105,7 @@ export default class MyTest extends Test {
             cfg.custom('delay_pools 1');
             cfg.custom('delay_class 1 1');
             // delay_parameters pool-id aggregate
-            cfg.custom(`delay_parameters 1 ${Config.AggregateSpeedLimit}/${unlimited}`);
+            cfg.custom(`delay_parameters 1 ${Config.AggregateRestore}/${unlimited}`);
             cfg.custom('delay_access 1 allow delayed');
             return;
         }
@@ -114,7 +114,7 @@ export default class MyTest extends Test {
             cfg.custom('delay_pools 1');
             cfg.custom('delay_class 1 3');
             // delay_parameters pool-id aggregate network individual
-            cfg.custom(`delay_parameters 1 none none ${Config.BucketSpeedLimit}/${unlimited}`);
+            cfg.custom(`delay_parameters 1 none none ${Config.IndividualRestore}/${unlimited}`);
             cfg.custom('delay_access 1 allow delayed');
             // prevent flooding the bucket with our `unlimited` level
             cfg.custom('delay_initial_bucket_level 0');
@@ -140,9 +140,9 @@ export default class MyTest extends Test {
         if (Config.LogBodies === undefined && Config.BodySize > 1*1024*1024)
             Config.LogBodies = 0;
 
-        let slowSpeed = Config.AggregateSpeedLimit / Config.ConcurrencyLevel;
-        if (slowSpeed > Config.BucketSpeedLimit)
-            slowSpeed = Config.BucketSpeedLimit;
+        let slowSpeed = Config.AggregateRestore / Config.ConcurrencyLevel;
+        if (slowSpeed > Config.IndividualRestore)
+            slowSpeed = Config.IndividualRestore;
 
         let expectedSpeed;
         let description;
@@ -160,7 +160,7 @@ export default class MyTest extends Test {
         resource.body = new Body(Gadgets.RandomText("body-", Config.BodySize));
 
         let testCase = new HttpTestCase(description);
-        testCase.expectLongerRuntime(new Date(1000 /* ms */ * Config.BodySize / Config.BucketSpeedLimit));
+        testCase.expectLongerRuntime(new Date(1000 /* ms */ * Config.BodySize / Config.IndividualRestore));
 
         testCase.client().request.for(resource);
         if (this._sendXff) {
