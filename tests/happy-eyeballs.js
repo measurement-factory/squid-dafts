@@ -709,9 +709,9 @@ export default class MyTest extends Test {
         // Hack: We rely on zero-TTL DNS records. Some proxies ignore zero TTLs when
         // collapsing DNS queries. To reduce collapsing, delay N+1 tests.
         // TODO: Use .runN.test suffix (for concurrent tests?).
-        console.log(new Date().toISOString(), "Planned test run", testRun);
+        console.log(Gadgets.PrettyDate(new Date()), "Planned test run", testRun);
         await new Promise(resolve => setTimeout(resolve, (testRun.id - 1) * 5000 * milliseconds));
-        console.log(new Date().toISOString(), "Actually starting test run", testRun);
+        console.log(Gadgets.PrettyDate(new Date()), "Actually starting test run", testRun);
 
         for (let testCase of this.plannedCases) {
             const winner = testCase.winner();
