@@ -25,6 +25,8 @@ sub MakeIp {
     my $end = $IpEndingByState{$state};
     die("unknown happy.test IP state: $state; stopped") unless defined $end;
 
+    die("excessive TCP delay: $slot slots, stopped") if $slot > 255;
+
     return "127.0.${slot}.$end" if $family == 4;
     return "fc00::${slot}:$end" if $family == 6;
     die("unknown happy.test IP family: $family; stopped");
