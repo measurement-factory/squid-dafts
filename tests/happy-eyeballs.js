@@ -297,7 +297,10 @@ class HappyCase extends HttpTestCase {
     }
 
     domainName() {
-        return this.toString() + ".happy.test";
+        // this prefix is ignored by our DNS server but makes domain names
+        // unique across repeated (and concurrent) test runs
+        const prefix = `ign${this.walk.testRun().toWord()}.`;
+        return prefix + this.toString() + ".happy.test";
     }
 
     commitStep_(template) {
@@ -350,8 +353,13 @@ class HappyCase extends HttpTestCase {
 // * secondary DNS step
 // * last TCP steps, starting with a middle TCP step (firstFamilyAfterSpare)
 class Walk {
-    constructor(primeFamilyId) {
-        assert(arguments.length === 1);
+    constructor(testRun, primeFamilyId) {
+        assert(arguments.length === 2);
+
+        // To generate unique domains for each test run to avoid DUT DNS cache
+        // hits despite its minimum positive DNS TTL and negative DNS caching.
+        this.testRun_ = testRun;
+
         this.primeFamilyId_ = primeFamilyId;
         this.clear();
     }
@@ -385,6 +393,10 @@ class Walk {
         if (this.spareFamily_)
             result = result.concat(this.spareFamily_.allSteps());
         return result;
+    }
+
+    testRun() {
+        return this.testRun_;
     }
 
     domainName() {
@@ -641,13 +653,13 @@ function *makeFamilySteps(family) {
     }
 }
 
-function makeTestCases() {
+function makeTestCases(testRun) {
     let plannedCases = [];
     let supportedCases = [];
     let orderedCases = new Map(Config.Cases.map((domain) => [domain.toLowerCase(), false]));
 
     for (const primeFamilyId of [4, 6]) {
-        let walk = new Walk(primeFamilyId);
+        let walk = new Walk(testRun, primeFamilyId);
 
         for (const primeFamily of makeFamilySteps(primeFamilyId)) {
             const allowPrime = walk.setPrime(primeFamily);
@@ -703,15 +715,10 @@ export default class MyTest extends Test {
     async run(testRun) {
         // XXX: Re-generating all test cases for each test run.
         // TODO: Split HappyCase away from HttpTestCase to make it reusable.
-        this.plannedCases = makeTestCases();
+        this.plannedCases = makeTestCases(testRun);
         assert(this.plannedCases);
 
-        // Hack: We rely on zero-TTL DNS records. Some proxies ignore zero TTLs when
-        // collapsing DNS queries. To reduce collapsing, delay N+1 tests.
-        // TODO: Use .runN.test suffix (for concurrent tests?).
-        console.log(Gadgets.PrettyDate(new Date()), "Planned test run", testRun);
-        await new Promise(resolve => setTimeout(resolve, (testRun.id - 1) * 5000 * milliseconds));
-        console.log(Gadgets.PrettyDate(new Date()), "Actually starting test run", testRun);
+        console.log(Gadgets.PrettyDate(new Date()), "Starting test run", testRun);
 
         for (let testCase of this.plannedCases) {
             const winner = testCase.winner();

@@ -37,9 +37,10 @@ sub delayInSlots {
 
 # a4.a6.up6.to250ms.happy.test
 $main::ZoneMaker = sub {
-    my ($qname) = @_;
-    return undef() unless $qname =~ /[.]happy[.]test$/i;
-    my $left = $`;
+    my ($rawQname) = @_;
+    return undef() unless $rawQname =~ /^(?:ign\w*)?(.+)([.]happy[.]test)$/i;
+    my $left = $1;
+    my $qname = $1 . $2;
 
     my $families = {
         4 => {
