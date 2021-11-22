@@ -136,10 +136,6 @@ export default class MyTest extends Test {
 
 
     async run(testRun) {
-        // do not log large body handling details by default
-        if (Config.LogBodies === undefined && Config.BodySize > 1*1024*1024)
-            Config.LogBodies = 0;
-
         let slowSpeed = Config.AggregateRestore / Config.ConcurrencyLevel;
         if (slowSpeed > Config.IndividualRestore)
             slowSpeed = Config.IndividualRestore;
