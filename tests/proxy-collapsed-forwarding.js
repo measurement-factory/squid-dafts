@@ -83,9 +83,7 @@ export default class MyTest extends Test {
         ]});
 
         configGen.addGlobalConfigVariation({bodySize: [
-            // XXX: Http::One::Decoder.decode() asserts, probably because
-            // decodedAll() becomes true even before the first decode() call.
-            // 0,
+            0,
             Config.DefaultBodySize(),
             Config.LargeBodySize(),
         ]});
