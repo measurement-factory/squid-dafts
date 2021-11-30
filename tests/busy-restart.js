@@ -26,6 +26,12 @@ export default class MyTest extends Test {
             Config.LargeBodySize(),
         ]});
 
+        configGen.addGlobalConfigVariation({dutShutdownManner: [
+            'gracefully',
+            'urgently',
+            'immediately',
+        ]});
+
         return configGen.generateConfigurators();
     }
 
@@ -52,7 +58,7 @@ export default class MyTest extends Test {
         const keptBusy = this._keepProxyBusy();
         const keptValid = this._keepValidatingProxyCache();
 
-        await this.dut.restart(/* TODO {shutdownManner: 'SIGKILL'} */);
+        await this.dut.restart();
         this._restarted = true;
 
         await keptBusy;
