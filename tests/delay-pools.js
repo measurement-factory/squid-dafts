@@ -93,9 +93,9 @@ export default class MyTest extends Test {
         if (Config.DelayClass === "response") {
             cfg.custom('response_delay_pool slowPool ' +
                        `individual-restore=${Config.IndividualRestore} ` +
-                       'individual-maximum=${unlimited} ' +
+                       `individual-maximum=${unlimited} ` +
                        `aggregate-restore=${Config.AggregateRestore} ` +
-                       'aggregate-maximum=${unlimited} ' +
+                       `aggregate-maximum=${unlimited} ` +
                        'initial-bucket-level=90');
             cfg.custom('response_delay_pool_access slowPool allow delayed');
             return;
