@@ -104,6 +104,12 @@ export default class MyTest extends Test {
 
     // cache a single response (without validation)
     async _cacheOne(expectSuccess) {
+        if (expectSuccess) {
+            // make sure any winding down swapouts from previous concurrent
+            // transactions do not interfere with our ability to cache
+            await this.dut.finishCaching();
+        }
+
         const resource = new Resource();
         resource.uri.address = this._serverAddress;
         resource.makeCachable();
@@ -118,6 +124,9 @@ export default class MyTest extends Test {
         await missCase.run();
 
         if (expectSuccess) {
+            // successful caching includes making sure our miss swapout ends
+            await this.dut.finishCaching();
+
             this._lastCachedResource = resource;
             this._lastCachedResponse = missCase.server().transaction().response;
         }
@@ -129,9 +138,6 @@ export default class MyTest extends Test {
     async _validateOne(requireHit) {
         assert(this._lastCachedResource);
         assert(this._lastCachedResponse);
-
-        if (requireHit)
-            await this.dut.finishCaching();
 
         const hitHow = requireHit ? "definitely" : "maybe";
         const hitCase = new HttpTestCase(`${hitHow} hit a cached response`);
