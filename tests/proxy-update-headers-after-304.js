@@ -70,14 +70,9 @@ export default class MyTest extends Test {
             testCase.server().response.header.add(hitCheck);
             testCase.server().response.header.add(growingHeader);
 
-            testCase.server().response.header.addWarning(199, "MUST be removed");
-            testCase.server().response.header.addWarning(299, "MUST be preserved");
-
             testCase.client().checks.add((client) => {
                 client.expectStatusCode(200);
                 const receivedResponse = client.transaction().response;
-                assert(receivedResponse.header.hasWarning(199), "DUT forwarded an 1xx Warning");
-                assert(receivedResponse.header.hasWarning(299), "DUT forwarded a 2xx Warning");
             });
 
             await testCase.run();
@@ -93,8 +88,6 @@ export default class MyTest extends Test {
             testCase.client().checks.add((client) => {
                 client.expectStatusCode(304);
                 const receivedResponse = client.transaction().response;
-                assert(!receivedResponse.header.hasWarning(199), "DUT did not generate an 1xx Warning");
-                assert(!receivedResponse.header.hasWarning(299), "DUT did not generate a 2xx Warning");
             });
             await testCase.run();
         }
@@ -127,8 +120,6 @@ export default class MyTest extends Test {
                 assert.equal(receivedResponse.header.values("Last-Modified"), resource.lastModificationTime.toUTCString(), "relayed Last-Modified");
                 assert.equal(receivedResponse.header.values("Expires"), resource.nextModificationTime.toUTCString(), "relayed Expires");
                 assert.equal(receivedResponse.header.value(hitCheck.name), hitCheck.value, "preserved originally cached header field");
-                assert(!receivedResponse.header.hasWarning(199), "304 did not restore a 1xx Warning");
-                assert(receivedResponse.header.hasWarning(299), "304 preserved a 2xx Warning");
             });
 
             await testCase.run();
@@ -148,8 +139,6 @@ export default class MyTest extends Test {
                 assert.equal(updatedResponse.header.values("Last-Modified"), resource.lastModificationTime.toUTCString(), "updated Last-Modified");
                 assert.equal(updatedResponse.header.values("Expires"), resource.nextModificationTime.toUTCString(), "updated Expires");
                 assert.equal(updatedResponse.header.value(hitCheck.name), hitCheck.value, "preserved originally cached header field");
-                assert(!updatedResponse.header.hasWarning(199), "200 did not restore an 1xx Warning");
-                assert(updatedResponse.header.hasWarning(299), "200 preserved a 2xx Warning");
             });
 
             await testCase.run();
