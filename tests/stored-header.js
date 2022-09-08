@@ -15,7 +15,7 @@ import ConfigGen from "../src/test/ConfigGen";
 
 /*
 Squid reads a disk-stored entry by fixed-size data blocks.
- 
+
 Each entry starts with swap meta headers, followed by a stored HTTP message.
 We need to know the swap meta headers size so that we could generate HTTP
 header of the required length (e.g., occupying the rest of the first data block).
@@ -63,17 +63,46 @@ Config.Recognize([
     {
         option: "data-blocks",
         type: "Number",
-        default: "1",
         description: `The number of Squid swap data blocks (${DataBlockSize} bytes each) that will be occupied by the response header`,
     },
     {
         option: "data-block-delta",
-        type: "String",
-        enum: ["minus", "zero", "plus"],
-        default: "zero",
-        description: "Allows to generate a header that will be one byte less, equal to, or one byte greater than the data blocks size",
+        type: "Number",
+        description: "Allows to generate a header that will be ess, equal to, or greater than the data blocks size",
     },
 ]);
+
+class TestConfig
+{
+    static PrefixSize(blocks, delta) {
+        const firstBlock = DataBlockSize - SwapMetaHeaderSize;
+        return firstBlock + DataBlockSize * (blocks - 1) + delta;
+    }
+
+    static DataBlocks() {
+        if (Config.DataBlocks === undefined)
+            return [1, 2];
+        assert(Config.DataBlocks > 0);
+        return [Config.DataBlocks];
+    }
+
+    static Deltas() {
+        return Config.DataBlockDelta === undefined ? [-1, 0, 1] : [Config.DataBlockDelta];
+    }
+
+    static Prefixes() {
+        let prefixes = [];
+        for (let b of TestConfig.DataBlocks()) {
+            for (let d of TestConfig.Deltas())
+                prefixes.push(TestConfig.PrefixSize(b, d));
+        }
+        return prefixes;
+    }
+
+    static Bodies() {
+        return [0, Config.DefaultBodySize()];
+    }
+}
 
 export default class MyTest extends Test {
 
@@ -84,38 +113,12 @@ export default class MyTest extends Test {
 
     static Configurators() {
         const configGen = new ConfigGen();
-        configGen.addGlobalConfigVariation({dataBlocks: [
-            1,
-            2,
-        ]});
 
-        configGen.addGlobalConfigVariation({dataBlockDelta: [
-            "minus",
-            "zero",
-            "plus",
-        ]});
+        configGen.addGlobalConfigVariation({prefixSize: TestConfig.Prefixes()});
 
-        configGen.addGlobalConfigVariation({bodySize: [
-            0,
-            Config.DefaultBodySize(),
-        ]});
+        configGen.addGlobalConfigVariation({bodySize: TestConfig.Bodies()});
 
         return configGen.generateConfigurators();
-    }
-
-    prefixSize() {
-        assert(Config.DataBlocks > 0);
-        const firstBlock = DataBlockSize - SwapMetaHeaderSize;
-        let delta = 0;
-        if (Config.DataBlockDelta === "minus")
-            delta = -1;
-        else if (Config.DataBlockDelta === "plus")
-            delta = 1;
-        else {
-            assert(Config.DataBlockDelta === "zero");
-            delta = 0;
-        }
-        return firstBlock + DataBlockSize * (Config.DataBlocks - 1) + delta;
     }
 
     async testCaching() {
@@ -124,18 +127,16 @@ export default class MyTest extends Test {
         resource.uri.address = AddressPool.ReserveListeningAddress();
         resource.body = new Body();
         resource.finalize();
-        const prefixSz = this.prefixSize();
 
-        let missCase = new HttpTestCase(`forward a response with ${prefixSz}-byte header and ${Config.BodySize}-byte body`);
+        let missCase = new HttpTestCase(`forward a response with ${Config.PrefixSize}-byte header and ${Config.BodySize}-byte body`);
         missCase.server().serve(resource);
-        missCase.server().response.minimumPrefixSize = prefixSz;
         missCase.client().request.for(resource);
         missCase.addMissCheck();
         await missCase.run();
 
         await this.dut.finishCaching();
 
-        let hitCase = new HttpTestCase(`hit a response with ${prefixSz}-byte header and ${Config.BodySize}-byte body`);
+        let hitCase = new HttpTestCase(`hit a response with ${Config.PrefixSize}-byte header and ${Config.BodySize}-byte body`);
         hitCase.client().request.for(resource);
         hitCase.addHitCheck(missCase.server().transaction().response);
         await hitCase.run();
