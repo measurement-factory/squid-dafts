@@ -102,6 +102,21 @@ class TestConfig
     static Bodies() {
         return [0, Config.DefaultBodySize()];
     }
+
+    static Ranges() {
+        if (Config.BodySize === 0)
+            return [];
+        let ranges = [];
+        const count = 3;
+        assert(Config.BodySize > count);
+        const size = Math.floor(Config.BodySize/count);
+        for (let i = 0; i < count; ++i) {
+            const beg = i*size;
+            const end = beg + size;
+            ranges.push(`${beg}-${end}`);
+        }
+        return ranges;
+    }
 }
 
 export default class MyTest extends Test {
@@ -117,6 +132,8 @@ export default class MyTest extends Test {
         configGen.addGlobalConfigVariation({prefixSize: TestConfig.Prefixes()});
 
         configGen.addGlobalConfigVariation({bodySize: TestConfig.Bodies()});
+
+        configGen.addGlobalConfigVariation({range: TestConfig.Ranges()});
 
         return configGen.generateConfigurators();
     }
@@ -138,7 +155,16 @@ export default class MyTest extends Test {
 
         let hitCase = new HttpTestCase(`hit a response with ${Config.PrefixSize}-byte header and ${Config.BodySize}-byte body`);
         hitCase.client().request.for(resource);
-        hitCase.addHitCheck(missCase.server().transaction().response);
+        hitCase.client().request.setRanges();
+
+        if (Config.Range) {
+            hitCase.client().checks.add((client) => {
+                client.expectStatusCode(206);
+            });
+        } else {
+            hitCase.addHitCheck(missCase.server().transaction().response);
+        }
+
         await hitCase.run();
 
         AddressPool.ReleaseListeningAddress(resource.uri.address);
