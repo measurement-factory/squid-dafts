@@ -12,6 +12,7 @@ import * as Config from "../src/misc/Config";
 import * as AddressPool from "../src/misc/AddressPool";
 import Test from "../src/overlord/Test";
 import ConfigGen from "../src/test/ConfigGen";
+import { RandomText } from "../src/misc/Gadgets";
 
 /*
 Squid reads a disk-stored entry by fixed-size data blocks.
@@ -104,18 +105,7 @@ class TestConfig
     }
 
     static Ranges() {
-        if (Config.BodySize === 0)
-            return [];
-        let ranges = [];
-        const count = 3;
-        assert(Config.BodySize > count);
-        const size = Math.floor(Config.BodySize/count);
-        for (let i = 0; i < count; ++i) {
-            const beg = i*size;
-            const end = beg + size;
-            ranges.push(`${beg}-${end}`);
-        }
-        return ranges;
+        return ['none', 'low', 'med', 'high', 'any'];
     }
 }
 
@@ -138,6 +128,72 @@ export default class MyTest extends Test {
         return configGen.generateConfigurators();
     }
 
+    // creates an array of range pairs from configuration
+    makeRange() {
+        const rangeName = Config.Range;
+        const blocksNumber = 5;
+        if (!rangeName || rangeName === 'none' || Config.BodySize < blocksNumber)
+            return null
+        const blockSize = Math.floor(Config.BodySize/blocksNumber);
+        const blocks = {low: [0], med: [2], high: [4], any: [0, 2, 4]};
+        const name = Object.keys(blocks).find(v => v === rangeName);
+        assert(name);
+        return blocks[name].map(block => [block*blockSize, (block+1)*blockSize - 1]);
+    }
+
+    // whether the two arrays are equal
+    arraysAreEqual(a1, a2) {
+        const isA1 = Array.isArray(a1);
+        const isA2 = Array.isArray(a2);
+
+        if ((!isA1 && isA2) || (isA1 && !isA2))
+            return false;
+        if (!isA1)
+            return a1 === a2;
+        if (a1.length !== a2.length)
+            return false;
+        for (let i=0; i < a1.length; ++i) {
+            if (!this.arraysAreEqual(a1[i], a2[i]))
+                return false;
+        }
+        return true;
+    }
+
+    async testRangeResponse() {
+        const ranges = this.makeRange();
+        if (!ranges)
+            return;
+        let resource = new Resource();
+        resource.makeCachable();
+        resource.uri.address = AddressPool.ReserveListeningAddress();
+        resource.body = new Body(RandomText("body-", Config.BodySize), ranges);
+        resource.finalize();
+
+        let missCase = new HttpTestCase(`forward a response to a range request with ${Config.PrefixSize}-byte header and ${Config.BodySize}-byte body`);
+        missCase.server().serve(resource);
+        missCase.server().response.startLine.code(206);
+        missCase.server().response.header.setResponseRanges(ranges, Config.BodySize);
+        missCase.client().request.for(resource);
+        missCase.client().request.header.setRequestRanges(ranges);
+
+        missCase.addMissCheck();
+
+        missCase.client().checks.add((client) => {
+            client.expectStatusCode(206);
+            const body = client.transaction().response.body;
+            assert(this.arraysAreEqual(ranges, body.ranges));
+        });
+
+        missCase.server().checks.add((server) => {
+            const header = server.transaction().request.header;
+            assert(this.arraysAreEqual(ranges, header.ranges()));
+        });
+
+        await missCase.run();
+
+        AddressPool.ReleaseListeningAddress(resource.uri.address);
+    }
+
     async testCaching() {
         let resource = new Resource();
         resource.makeCachable();
@@ -153,13 +209,16 @@ export default class MyTest extends Test {
 
         await this.dut.finishCaching();
 
-        let hitCase = new HttpTestCase(`hit a response with ${Config.PrefixSize}-byte header and ${Config.BodySize}-byte body`);
+        const ranges = this.makeRange();
+        const rangeDebugging = ranges ? 'with a range request' : '';
+        let hitCase = new HttpTestCase(`hit a response ${rangeDebugging} with ${Config.PrefixSize}-byte header and ${Config.BodySize}-byte body`);
         hitCase.client().request.for(resource);
-        hitCase.client().request.setRanges();
-
-        if (Config.Range) {
+        if (ranges) {
+            hitCase.client().request.header.setRequestRanges(ranges);
             hitCase.client().checks.add((client) => {
                 client.expectStatusCode(206);
+                const body = client.transaction().response.body;
+                assert(this.arraysAreEqual(ranges, body.ranges));
             });
         } else {
             hitCase.addHitCheck(missCase.server().transaction().response);
@@ -171,6 +230,7 @@ export default class MyTest extends Test {
     }
 
     async run(/*testRun*/) {
+        await this.testRangeResponse();
         await this.testCaching();
     }
 }
