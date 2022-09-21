@@ -60,6 +60,9 @@ const SwapMetaHeaderSize = 131;
 // Squid constant
 const DataBlockSize = 4096;
 
+// 64K Squid prefix limitation
+const MaxBlock = 16;
+
 Config.Recognize([
     {
         option: "data-blocks",
@@ -77,6 +80,12 @@ Config.Recognize([
         enum: ["mem", "disk", "all"],
         description: "Turns on rock disk cache",
     },
+    {
+        option: "smp",
+        type: "Boolean",
+        default: "false",
+        description: "In this mode MISS and HIT requests will go to different proxy SMP workers",
+    },
 ]);
 
 class TestConfig
@@ -88,7 +97,7 @@ class TestConfig
 
     static DataBlocks() {
         if (Config.DataBlocks === undefined)
-            return [1, 2];
+            return [1, 2, 8, 16];
         assert(Config.DataBlocks > 0);
         return [Config.DataBlocks];
     }
@@ -100,9 +109,14 @@ class TestConfig
     static Prefixes() {
         let prefixes = [];
         for (let b of TestConfig.DataBlocks()) {
-            for (let d of TestConfig.Deltas())
+            assert(b <= MaxBlock);
+            for (let d of TestConfig.Deltas()) {
+                if (b === MaxBlock && d > 0)
+                    continue;
                 prefixes.push(TestConfig.PrefixSize(b, d));
+            }
         }
+        assert(prefixes.length > 0);
         return prefixes;
     }
 
@@ -115,6 +129,8 @@ class TestConfig
     }
 
     static cacheType() { return [ 'mem', 'disk', 'all' ]; }
+
+    static smpMode () { return [ false, true ]; }
 }
 
 export default class MyTest extends Test {
@@ -124,6 +140,11 @@ export default class MyTest extends Test {
         const diskCache = Config.CacheType === 'disk' || Config.CacheType === 'all';
         cfg.memoryCaching(memCache);
         cfg.diskCaching(diskCache);
+        if (Config.Smp) {
+            cfg.workers(2);
+            cfg.dedicatedWorkerPorts(true);
+            this._workerListeningAddresses = cfg.workerListeningAddresses();
+        }
     }
 
     static Configurators() {
@@ -136,6 +157,8 @@ export default class MyTest extends Test {
         configGen.addGlobalConfigVariation({range: TestConfig.Ranges()});
 
         configGen.addGlobalConfigVariation({cacheType: TestConfig.cacheType()});
+
+        configGen.addGlobalConfigVariation({smp: TestConfig.smpMode()});
 
         return configGen.generateConfigurators();
     }
@@ -174,6 +197,8 @@ export default class MyTest extends Test {
     async testRangeResponse() {
         const ranges = this.makeRange();
         if (!ranges)
+            return;
+        if (Config.Smp)
             return;
         let resource = new Resource();
         resource.makeCachable();
@@ -216,7 +241,10 @@ export default class MyTest extends Test {
         let missCase = new HttpTestCase(`forward a response with ${Config.PrefixSize}-byte header and ${Config.BodySize}-byte body`);
         missCase.server().serve(resource);
         missCase.client().request.for(resource);
+        if (Config.Smp)
+            missCase.client().nextHopAddress = this._workerListeningAddresses[1];
         missCase.addMissCheck();
+
         await missCase.run();
 
         await this.dut.finishCaching();
@@ -225,6 +253,8 @@ export default class MyTest extends Test {
         const rangeDebugging = ranges ? 'with a range request' : '';
         let hitCase = new HttpTestCase(`hit a response ${rangeDebugging} with ${Config.PrefixSize}-byte header and ${Config.BodySize}-byte body`);
         hitCase.client().request.for(resource);
+        if (Config.Smp)
+            hitCase.client().nextHopAddress = this._workerListeningAddresses[2];
         if (ranges) {
             hitCase.client().request.addRanges(ranges);
             hitCase.client().checks.add((client) => {
