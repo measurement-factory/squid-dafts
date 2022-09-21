@@ -69,7 +69,13 @@ Config.Recognize([
     {
         option: "data-block-delta",
         type: "Number",
-        description: "Allows to generate a header that will be ess, equal to, or greater than the data blocks size",
+        description: "Allows to generate a header that will be less, equal to, or greater than the data blocks size",
+    },
+    {
+        option: "cache-type",
+        type: "String",
+        enum: ["mem", "disk", "all"],
+        description: "Turns on rock disk cache",
     },
 ]);
 
@@ -107,13 +113,17 @@ class TestConfig
     static Ranges() {
         return ['none', 'low', 'med', 'high', 'any'];
     }
+
+    static cacheType() { return [ 'mem', 'disk', 'all' ]; }
 }
 
 export default class MyTest extends Test {
 
     _configureDut(cfg) {
-        cfg.memoryCaching(false);
-        cfg.diskCaching(true);
+        const memCache = Config.CacheType === 'mem' || Config.CacheType === 'all';
+        const diskCache = Config.CacheType === 'disk' || Config.CacheType === 'all';
+        cfg.memoryCaching(memCache);
+        cfg.diskCaching(diskCache);
     }
 
     static Configurators() {
@@ -124,6 +134,8 @@ export default class MyTest extends Test {
         configGen.addGlobalConfigVariation({bodySize: TestConfig.Bodies()});
 
         configGen.addGlobalConfigVariation({range: TestConfig.Ranges()});
+
+        configGen.addGlobalConfigVariation({cacheType: TestConfig.cacheType()});
 
         return configGen.generateConfigurators();
     }
@@ -172,21 +184,21 @@ export default class MyTest extends Test {
         let missCase = new HttpTestCase(`forward a response to a range request with ${Config.PrefixSize}-byte header and ${Config.BodySize}-byte body`);
         missCase.server().serve(resource);
         missCase.server().response.startLine.code(206);
-        missCase.server().response.header.setResponseRanges(ranges, Config.BodySize);
+        missCase.server().response.addRanges(ranges, Config.BodySize);
         missCase.client().request.for(resource);
-        missCase.client().request.header.setRequestRanges(ranges);
+        missCase.client().request.addRanges(ranges);
 
         missCase.addMissCheck();
 
         missCase.client().checks.add((client) => {
             client.expectStatusCode(206);
-            const body = client.transaction().response.body;
-            assert(this.arraysAreEqual(ranges, body.ranges));
+            const response = client.transaction().response;
+            assert(this.arraysAreEqual(ranges, response.ranges));
         });
 
         missCase.server().checks.add((server) => {
-            const header = server.transaction().request.header;
-            assert(this.arraysAreEqual(ranges, header.ranges()));
+            const request = server.transaction().request;
+            assert(this.arraysAreEqual(ranges, request.parseRangeHeader()));
         });
 
         await missCase.run();
@@ -214,11 +226,11 @@ export default class MyTest extends Test {
         let hitCase = new HttpTestCase(`hit a response ${rangeDebugging} with ${Config.PrefixSize}-byte header and ${Config.BodySize}-byte body`);
         hitCase.client().request.for(resource);
         if (ranges) {
-            hitCase.client().request.header.setRequestRanges(ranges);
+            hitCase.client().request.addRanges(ranges);
             hitCase.client().checks.add((client) => {
                 client.expectStatusCode(206);
-                const body = client.transaction().response.body;
-                assert(this.arraysAreEqual(ranges, body.ranges));
+                const response = client.transaction().response;
+                assert(this.arraysAreEqual(ranges, response.ranges));
             });
         } else {
             hitCase.addHitCheck(missCase.server().transaction().response);
