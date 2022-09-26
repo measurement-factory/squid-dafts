@@ -61,7 +61,7 @@ const SwapMetaHeaderSize = 131;
 const DataBlockSize = 4096;
 
 // 64K Squid prefix limitation
-const MaxBlock = 16;
+const MaxBlock = 17;
 
 Config.Recognize([
     {
@@ -92,12 +92,14 @@ class TestConfig
 {
     static PrefixSize(blocks, delta) {
         const firstBlock = DataBlockSize - SwapMetaHeaderSize;
-        return firstBlock + DataBlockSize * (blocks - 1) + delta;
+        const fullBlocks = blocks === MaxBlock ? blocks - 2 : blocks -1;
+        const lastBlock = blocks === MaxBlock ? SwapMetaHeaderSize : 0;
+        return firstBlock + DataBlockSize * fullBlocks + lastBlock + delta;
     }
 
     static DataBlocks() {
         if (Config.DataBlocks === undefined)
-            return [1, 2, 8, 16];
+            return [1, 2, 8, 16, 17];
         assert(Config.DataBlocks > 0);
         return [Config.DataBlocks];
     }
@@ -110,11 +112,8 @@ class TestConfig
         let prefixes = [];
         for (let b of TestConfig.DataBlocks()) {
             assert(b <= MaxBlock);
-            for (let d of TestConfig.Deltas()) {
-                if (b === MaxBlock && d > 0)
-                    continue;
+            for (let d of TestConfig.Deltas())
                 prefixes.push(TestConfig.PrefixSize(b, d));
-            }
         }
         assert(prefixes.length > 0);
         return prefixes;
@@ -130,7 +129,7 @@ class TestConfig
 
     static cacheType() { return [ 'mem', 'disk', 'all' ]; }
 
-    static smpMode () { return [ false, true ]; }
+    static smpMode() { return [ false, true ]; }
 }
 
 export default class MyTest extends Test {
@@ -167,13 +166,27 @@ export default class MyTest extends Test {
     makeRange() {
         const rangeName = Config.Range;
         const blocksNumber = 5;
-        if (!rangeName || rangeName === 'none' || Config.BodySize < blocksNumber)
-            return null
+        const minimumBodyLength = blocksNumber * 2;
+        if (!rangeName || rangeName === 'none')
+            return null;
+
+        if (Config.BodySize < minimumBodyLength) {
+            console.log(`Warning: body length must be > ${minimumBodyLength}`);
+            return null;
+        }
+
         const blockSize = Math.floor(Config.BodySize/blocksNumber);
         const blocks = {low: [0], med: [2], high: [4], any: [0, 2, 4]};
         const name = Object.keys(blocks).find(v => v === rangeName);
         assert(name);
         return blocks[name].map(block => [block*blockSize, (block+1)*blockSize - 1]);
+    }
+
+    tooLargePrefix() {
+        let largePrefixes = [];
+        largePrefixes.push(TestConfig.PrefixSize(MaxBlock, 0));
+        largePrefixes.push(TestConfig.PrefixSize(MaxBlock, 1));
+        return largePrefixes.some(e => e === Config.PrefixSize);
     }
 
     // whether the two arrays are equal
@@ -192,6 +205,29 @@ export default class MyTest extends Test {
                 return false;
         }
         return true;
+    }
+
+    async testTooLargeHeader() {
+        if (Config.Range !== 'none')
+            return;
+        let resource = new Resource();
+        resource.makeCachable();
+        resource.uri.address = AddressPool.ReserveListeningAddress();
+        resource.body = new Body();
+        resource.finalize();
+
+        let missCase = new HttpTestCase(`forward a response with ${Config.PrefixSize}-byte header and ${Config.BodySize}-byte body`);
+        missCase.server().serve(resource);
+        missCase.client().request.for(resource);
+        missCase.client().checks.add((client) => {
+            client.expectStatusCode(431);
+        });
+        if (Config.Smp)
+            missCase.client().nextHopAddress = this._workerListeningAddresses[1];
+
+        await missCase.run();
+
+        AddressPool.ReleaseListeningAddress(resource.uri.address);
     }
 
     async testRangeResponse() {
@@ -272,8 +308,12 @@ export default class MyTest extends Test {
     }
 
     async run(/*testRun*/) {
-        await this.testRangeResponse();
-        await this.testCaching();
+        if (this.tooLargePrefix()) {
+            await this.testTooLargeHeader();
+        } else {
+            await this.testRangeResponse();
+            await this.testCaching();
+        }
     }
 }
 
