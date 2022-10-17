@@ -77,6 +77,9 @@ export default class MyTest extends Test {
         testCase.server().response.tag("cache");
         testCase.server().response.header.add(hitCheck);
         testCase.server().response.header.add("Cache-Control", "max-age=0");
+        testCase.client().checks.add((client) => {
+            client.expectStatusCode(200);
+        });
         await testCase.run();
     }
 
@@ -121,6 +124,8 @@ export default class MyTest extends Test {
 
         revServer.response.tag(revalidationTag);
 
+        revServer.serve(resource);
+
         if (serverStatus === 200)
             resource.modifiedAt(FuzzyTime.Now());
         else if (serverStatus === 304) {
@@ -133,14 +138,13 @@ export default class MyTest extends Test {
         else
             revServer.response.header.add("Cache-Control", 'max-age=60');
 
-        revServer.serve(resource);
 
         testCase.server().transaction().blockSendingUntil(
                 testCase.clientsSentEverything(),
                 "wait for all clients to collapse");
 
         testCase.check(() => {
-            const smp = workers === 1;
+            const smp = workers > 1;
             const serverTransactions = testCase.server().finishedTransactions() - 1; // all but the miss request
             const clientTransactions = workers * collapsedRequests;
             const collapsedTransactions = clientTransactions - serverTransactions;
@@ -160,10 +164,8 @@ export default class MyTest extends Test {
 
                 assert.equal(updatedTag, revalidationTag, "updated X-Daft-Response-Tag");
                 assert.equal(clientStatus, expectedClientStatus, "expected response status code");
-                // TODO: looks like that Squid behavior has changed - it does not preserve the cached header anymore 
-                // In this case, remove this check and 'hitCheck' itself. 
-                // if (serverStatus === 304)
-                //     assert.equal(updatedResponse.header.value(hitCheck.name), hitCheck.value, "preserved originally cached header field");
+                if (serverStatus === 304 && expectedClientStatus === 200)
+                     assert.equal(updatedResponse.header.value(hitCheck.name), hitCheck.value, "preserved originally cached header field");
             }
         });
 
