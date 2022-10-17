@@ -68,7 +68,6 @@ export default class MyTest extends Test {
         let testCase = new HttpTestCase('cache something');
         testCase.client().request.for(resource);
         testCase.server().serve(resource);
-        testCase.server().response.tag("cache");
         testCase.server().response.header.add("Cache-Control", "max-age=0");
         await testCase.run();
     }
@@ -87,17 +86,10 @@ export default class MyTest extends Test {
     
         let testCase = new HttpTestCase("send " + clientsCount.toString() + " requests to make Squid collapse on them");
         testCase.client().request.for(resource);
-        let i = 1;
-        const tag = revalidation ? 'rev-' : 'fwd-'; 
-        const parentTag = tag + i.toString();
-        testCase.client().request.tag(parentTag);
         testCase.makeClients(clientsCount - 1, (client => {
-            i++;
             client.request.for(resource);
-            client.request.tag(tag + i.toString());
         }));
     
-        testCase.server().response.copyTag(true);
         testCase.server().serve(resource);
         if (makePrivate)
             makePrivate(testCase, resource);
@@ -107,22 +99,23 @@ export default class MyTest extends Test {
 
         testCase.check(() => {
             const clients = testCase.clients();
+            const parentID = clients[0].transaction().request.id();
             for (let i = 0; i < clients.length; ++i) {
-                let client = clients[i];
-                const sentTag = client.transaction().request.tag();
-                const receivedTag = client.transaction().response.tag();
-                const statusCode = client.transaction().response.startLine.codeString();
+                let request = clients[i].transaction().request;
+                let response = clients[i].transaction().response;
+                const sentID = request.id();
+                const receivedID = response.otherID(request);
+                const statusCode = response.startLine.codeString();
                 let msg = "changed X-Daft-Response-Tag, private headers ";
                 msg += makePrivate ? "on" : "off";
                 if (i === 0) {
                     assert.equal(statusCode, 200);
-                    assert.equal(sentTag, receivedTag, msg);
-                    assert.equal(parentTag, receivedTag, msg);
+                    assert.equal(parentID, receivedID, msg);
                 } else {
                     if (!makePrivate)
-                        assert.equal(parentTag, receivedTag, msg);
+                        assert.equal(parentID, receivedID, msg);
                     else // expecting 200 or 50x
-                        assert(parentTag !== receivedTag);
+                        assert(parentID !== receivedID);
                 }
             }
         });
