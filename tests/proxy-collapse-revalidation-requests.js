@@ -138,7 +138,6 @@ export default class MyTest extends Test {
         else
             revServer.response.header.add("Cache-Control", 'max-age=60');
 
-
         testCase.server().transaction().blockSendingUntil(
                 testCase.clientsSentEverything(),
                 "wait for all clients to collapse");
@@ -153,6 +152,7 @@ export default class MyTest extends Test {
                 console.log(`Warning: only ${collapsedTransactions} out of ${clientTransactions} ` +
                     `collapsable requests (${collapsedRatio}%) were collapsed.`);
             }
+            // SMP mode does not support collapsing (yet)
             const threshold = smp ? 0 : Config.CollapsedThreshold;
             const scope = smp ? "SMP" : "non-SMP";
             assert(collapsedRatio >= threshold, `Expected collapsed requests ratio (${scope})`);
