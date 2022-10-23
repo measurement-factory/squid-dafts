@@ -2,8 +2,7 @@
  * Copyright (C) 2015,2016 The Measurement Factory.
  * Licensed under the Apache License, Version 2.0.                       */
 
-/* Tests whether an HTTP proxy can "collapse"
- * revalidation requests */
+/* Tests whether an HTTP proxy can "collapse" revalidation requests */
 
 import HttpTestCase from "../src/test/HttpCase";
 import Resource from "../src/anyp/Resource";
@@ -20,7 +19,7 @@ Config.Recognize([
     {
         option: "workers",
         type: "Number",
-        default: "2",
+        default: "1",
         description: "number of clients",
     },
     {
@@ -64,7 +63,7 @@ export default class MyTest extends Test {
 
     static Configurators() {
         const configGen = new ConfigGen();
-        configGen.addGlobalConfigVariation({workers: ["1", "2"]});
+        configGen.addGlobalConfigVariation({workers: ["1"]});
         configGen.addGlobalConfigVariation({requestType: ["basic", "ims", "refresh", "auth"]});
         configGen.addGlobalConfigVariation({serverStatus: ["200", "304"]});
         return configGen.generateConfigurators();
@@ -119,6 +118,9 @@ export default class MyTest extends Test {
                 if (workers > 1)
                     collapsedClient.nextHopAddress = this._workerListeningAddresses[worker];
                 this.configureCollapsedRequest(collapsedClient.request, resource);
+                collapsedClient.transaction().blockSendingUntil(
+                    testCase.server().transaction().receivedEverything(),
+                    "wait for the first revalidation request to reach the server");
             });
         }
 
@@ -140,23 +142,9 @@ export default class MyTest extends Test {
 
         testCase.server().transaction().blockSendingUntil(
                 testCase.clientsSentEverything(),
-                "wait for all clients to collapse");
+                "wait for all revalidation clients to collapse");
 
         testCase.check(() => {
-            const smp = workers > 1;
-            const serverTransactions = testCase.server().finishedTransactions() - 1; // all but the miss request
-            const clientTransactions = workers * collapsedRequests;
-            const collapsedTransactions = clientTransactions - serverTransactions;
-            const collapsedRatio = Math.round(collapsedTransactions * 100 / (clientTransactions));
-            if (serverTransactions > 1 && !smp) {
-                console.log(`Warning: only ${collapsedTransactions} out of ${clientTransactions} ` +
-                    `collapsable requests (${collapsedRatio}%) were collapsed.`);
-            }
-            // SMP mode does not support collapsing (yet)
-            const threshold = smp ? 0 : Config.CollapsedThreshold;
-            const scope = smp ? "SMP" : "non-SMP";
-            assert(collapsedRatio >= threshold, `Expected collapsed requests ratio (${scope})`);
-
             for (let client of testCase.clients()) {
                 const updatedResponse = client.transaction().response;
                 const clientStatus = updatedResponse.startLine.codeInteger();
