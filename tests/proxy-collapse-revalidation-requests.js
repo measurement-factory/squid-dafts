@@ -17,7 +17,7 @@ import assert from "assert";
 
 Config.Recognize([
     {
-        option: "workers",
+        option: "workers", // proxy may not support collapsing if workers > 1
         type: "Number",
         default: "1",
         description: "number of clients",
@@ -40,12 +40,6 @@ Config.Recognize([
         enum: [ "200", "304" ], // TODO: add 50x
         default: "0",
         description: "server response status code",
-   },
-   {
-       option: "collapsed-threshold",
-       type: "Number",
-       default: "50",
-       description: "the percentage of proxy revalidation requests that are expected to collapse",
    },
 ]);
 
@@ -73,9 +67,10 @@ export default class MyTest extends Test {
         let testCase = new HttpTestCase('forward a cachable response');
         testCase.client().request.for(resource);
         testCase.server().serve(resource);
-        testCase.server().response.tag("cache");
+        testCase.server().response.tag("cached");
         testCase.server().response.header.add(hitCheck);
-        testCase.server().response.header.add("Cache-Control", "max-age=0");
+        if (Config.RequestType !== "refresh")
+            testCase.server().response.header.add("Cache-Control", "max-age=0");
         testCase.client().checks.add((client) => {
             client.expectStatusCode(200);
         });
@@ -98,7 +93,7 @@ export default class MyTest extends Test {
         const serverStatus = Number.parseInt(Config.ServerStatus, 10);
         const workers = Number.parseInt(Config.Workers, 10);
         const expectedClientStatus = (serverStatus === 304 && Config.RequestType === "ims") ? 304 : 200;
-        const revalidationTag = "revalidation";
+        const revalidationTag = "revalidated";
 
         let resource = new Resource();
         resource.uri.address = AddressPool.ReserveListeningAddress();
@@ -135,10 +130,10 @@ export default class MyTest extends Test {
             revServer.response.body = null;
         }
 
+        let cacheControlValue = "max-age-60";
         if (Config.RequestType === "auth")
-            revServer.response.header.add("Cache-Control", 'max-age=60, public');
-        else
-            revServer.response.header.add("Cache-Control", 'max-age=60');
+            cacheControlValue += ", public";
+        revServer.response.header.add("Cache-Control", cacheControlValue);
 
         testCase.server().transaction().blockSendingUntil(
                 testCase.clientsSentEverything(),
