@@ -5,6 +5,7 @@
 /* Tests whether an HTTP proxy can "collapse" revalidation requests */
 
 import HttpTestCase from "../src/test/HttpCase";
+import Promise from "bluebird";
 import Resource from "../src/anyp/Resource";
 import * as AddressPool from "../src/misc/AddressPool";
 import * as FuzzyTime from "../src/misc/FuzzyTime";
@@ -37,7 +38,7 @@ Config.Recognize([
     {
         option: "server-status",
         type: "Number",
-        enum: [ "200", "304" ], // TODO: add 50x
+        enum: [ "200", "304", "500" ],
         default: "0",
         description: "server response status code",
    },
@@ -59,18 +60,17 @@ export default class MyTest extends Test {
         const configGen = new ConfigGen();
         configGen.addGlobalConfigVariation({workers: ["1"]});
         configGen.addGlobalConfigVariation({requestType: ["basic", "ims", "refresh", "auth"]});
-        configGen.addGlobalConfigVariation({serverStatus: ["200", "304"]});
+        configGen.addGlobalConfigVariation({serverStatus: ["200", "304", "500"]});
         return configGen.generateConfigurators();
     }
 
-    async cacheSomething(resource, hitCheck) {
+    async cacheSomething(resource, hitCheck, tag) {
         let testCase = new HttpTestCase('forward a cachable response');
         testCase.client().request.for(resource);
         testCase.server().serve(resource);
-        testCase.server().response.tag("cached");
+        testCase.server().response.tag(tag);
         testCase.server().response.header.add(hitCheck);
-        if (Config.RequestType !== "refresh")
-            testCase.server().response.header.add("Cache-Control", "max-age=0");
+        testCase.server().response.header.add("Cache-Control", "max-age=0, must-revalidate");
         testCase.client().checks.add((client) => {
             client.expectStatusCode(200);
         });
@@ -87,13 +87,21 @@ export default class MyTest extends Test {
             request.header.add("Cache-Control", "max-age=0");
     }
 
+    clientStatus(serverStatus) {
+        if (serverStatus === 500 || (serverStatus === 304 && Config.RequestType === "ims"))
+            return serverStatus;
+       return 200;
+    }
+
     async checkOne()
     {
+        const originalTag = "cached";
+        const revalidationTag = "revalidated";
         const collapsedRequests = Number.parseInt(Config.CollapsedRequests, 10);
         const serverStatus = Number.parseInt(Config.ServerStatus, 10);
         const workers = Number.parseInt(Config.Workers, 10);
-        const expectedClientStatus = (serverStatus === 304 && Config.RequestType === "ims") ? 304 : 200;
-        const revalidationTag = "revalidated";
+        const expectedClientStatus = this.clientStatus(serverStatus);
+        const expectedClientTag = revalidationTag;
 
         let resource = new Resource();
         resource.uri.address = AddressPool.ReserveListeningAddress();
@@ -101,7 +109,7 @@ export default class MyTest extends Test {
         resource.finalize();
 
         const hitCheck = new Field("X-Daft-Hit-Check", Gadgets.UniqueId("check"));
-        await this.cacheSomething(resource, hitCheck);
+        await this.cacheSomething(resource, hitCheck, originalTag);
 
         let testCase = new HttpTestCase("send " + Config.CollapsedRequests + " requests to check collapsed revalidation");
         let revClient = testCase.client();
@@ -125,8 +133,8 @@ export default class MyTest extends Test {
 
         if (serverStatus === 200)
             resource.modifiedAt(FuzzyTime.Now());
-        else if (serverStatus === 304) {
-            revServer.response.startLine.code(304);
+        else { // 304 and 500
+            revServer.response.startLine.code(serverStatus);
             revServer.response.body = null;
         }
 
@@ -135,8 +143,10 @@ export default class MyTest extends Test {
             cacheControlValue += ", public";
         revServer.response.header.add("Cache-Control", cacheControlValue);
 
+        // TODO: we still need sleep to ensure that all requests got collapsed.
+        // Is there any other way to achieve this?
         testCase.server().transaction().blockSendingUntil(
-                testCase.clientsSentEverything(),
+                Promise.all([testCase.clientsSentEverything(), Gadgets.SleepMs(1000)]),
                 "wait for all revalidation clients to collapse");
 
         testCase.check(() => {
@@ -145,7 +155,7 @@ export default class MyTest extends Test {
                 const clientStatus = updatedResponse.startLine.codeInteger();
                 const updatedTag = updatedResponse.tag();
 
-                assert.equal(updatedTag, revalidationTag, "updated X-Daft-Response-Tag");
+                assert.equal(updatedTag, expectedClientTag, "expected X-Daft-Response-Tag");
                 assert.equal(clientStatus, expectedClientStatus, "expected response status code");
                 if (serverStatus === 304 && expectedClientStatus === 200)
                      assert.equal(updatedResponse.header.value(hitCheck.name), hitCheck.value, "preserved originally cached header field");
