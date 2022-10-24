@@ -20,14 +20,8 @@ Config.Recognize([
     {
     option: "clients-count",
     type: "Number",
-    default: "3",
+    default: "2",
     description: "number of clients",
-},
-    {
-    option: "kind",
-    type: "String",
-    enum: ["collapse-fwd", "collapse-rev" ],
-    description: "test either common collapse forwarding or collapsing on revalidation"
 },
 ]);
 
@@ -60,7 +54,7 @@ export default class MyTest extends Test {
 
     static Configurators() {
         const configGen = new ConfigGen();
-        configGen.addGlobalConfigVariation({kind: ["collapse-fwd", "collapse-rev"]});
+        configGen.addGlobalConfigVariation({clientsCount: ["clients-count", "2", "4"]});
         return configGen.generateConfigurators();
     }
 
@@ -133,14 +127,10 @@ export default class MyTest extends Test {
     }
 
     async run(/*testRun*/) {
-        const revalidation = Config.Kind === "collapse-rev";
-        const revalidationPhrase = revalidation ? " on revalidation" : ""; 
-        assert(revalidation || Config.Kind === "collapse-fwd");
-
-        console.log("Test A: the proxy must support entries sharing(collapsing)" + revalidationPhrase);
-        await this.doCheck(revalidation, false);
-        console.log("Test B: the proxy must not share private entries" + revalidationPhrase);
-        await this.doCheck(revalidation, true);
+        console.log("Test A: the proxy must support entries sharing(collapsing)");
+        await this.doCheck(false, false);
+        console.log("Test B: the proxy must not share private entries on revalidation");
+        await this.doCheck(true, true);
     }
 }
 
