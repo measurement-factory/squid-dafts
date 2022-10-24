@@ -21,7 +21,7 @@ Config.Recognize([
         option: "workers", // proxy may not support collapsing if workers > 1
         type: "Number",
         default: "1",
-        description: "number of clients",
+        description: "the number of clients",
     },
     {
         option: "collapsed-requests",
@@ -30,16 +30,17 @@ Config.Recognize([
         description: "the number of collapsed requests",
     },
     {
-        option: "request-type",
+        option: "revalidation-request",
         type: "String",
         enum: ["basic", "ims", "refresh", "auth"],
-        description: "The proxy revalidation request type"
+        default: "basic",
+        description: "special request headers to add to the revalidation request (add nothing by default)"
     },
     {
         option: "server-status",
         type: "Number",
         enum: [ "200", "304", "500" ],
-        default: "0",
+        default: "200",
         description: "server response status code",
    },
 ]);
@@ -59,7 +60,7 @@ export default class MyTest extends Test {
     static Configurators() {
         const configGen = new ConfigGen();
         configGen.addGlobalConfigVariation({workers: ["1"]});
-        configGen.addGlobalConfigVariation({requestType: ["basic", "ims", "refresh", "auth"]});
+        configGen.addGlobalConfigVariation({revalidationRequest: ["basic", "ims", "refresh", "auth"]});
         configGen.addGlobalConfigVariation({serverStatus: ["200", "304", "500"]});
         return configGen.generateConfigurators();
     }
@@ -79,16 +80,16 @@ export default class MyTest extends Test {
 
     configureCollapsedRequest(request, resource) {
         request.for(resource);
-        if (Config.RequestType === "auth")
+        if (Config.RevalidationRequest === "auth")
             request.header.add("Authorization", "Basic dXNlcjpwYXNz"); // user:pass
-        else if (Config.RequestType === "ims")
+        else if (Config.RevalidationRequest === "ims")
             request.conditions({ ims: resource.notModifiedSince() });
-        else if (Config.RequestType === "refresh")
+        else if (Config.RevalidationRequest === "refresh")
             request.header.add("Cache-Control", "max-age=0");
     }
 
     clientStatus(serverStatus) {
-        if (serverStatus === 500 || (serverStatus === 304 && Config.RequestType === "ims"))
+        if (serverStatus === 500 || (serverStatus === 304 && Config.RevalidationRequest === "ims"))
             return serverStatus;
        return 200;
     }
@@ -133,13 +134,13 @@ export default class MyTest extends Test {
 
         if (serverStatus === 200)
             resource.modifiedAt(FuzzyTime.Now());
-        else { // 304 and 500
+        else { // 304 or 500
             revServer.response.startLine.code(serverStatus);
             revServer.response.body = null;
         }
 
         let cacheControlValue = "max-age-60";
-        if (Config.RequestType === "auth")
+        if (Config.RevalidationRequest === "auth")
             cacheControlValue += ", public";
         revServer.response.header.add("Cache-Control", cacheControlValue);
 
