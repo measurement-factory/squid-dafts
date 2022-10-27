@@ -144,10 +144,8 @@ export default class MyTest extends Test {
             cacheControlValue += ", public";
         revServer.response.header.add("Cache-Control", cacheControlValue);
 
-        // TODO: we still need sleep to ensure that all requests got collapsed.
-        // Is there any other way to achieve this?
         testCase.server().transaction().blockSendingUntil(
-                Promise.all([testCase.clientsSentEverything(), Gadgets.SleepMs(1000)]),
+                this.dut.waitCollapsed(resource.uri.path, collapsedRequests + 1),
                 "wait for all revalidation clients to collapse");
 
         testCase.check(() => {
