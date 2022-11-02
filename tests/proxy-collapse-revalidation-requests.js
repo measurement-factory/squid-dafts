@@ -145,7 +145,7 @@ export default class MyTest extends Test {
         revServer.response.header.add("Cache-Control", cacheControlValue);
 
         testCase.server().transaction().blockSendingUntil(
-                this.dut.waitCollapsed(resource.uri.path, collapsedRequests + 1),
+                this.dut.allCollapsed(resource.uri.path, collapsedRequests),
                 "wait for all revalidation clients to collapse");
 
         testCase.check(() => {
