@@ -98,7 +98,7 @@ export default class MyTest extends Test {
                 let request = clients[i].transaction().request;
                 let response = clients[i].transaction().response;
                 const sentID = request.id();
-                const receivedID = response.otherID(request);
+                const receivedID = response.extractMatchingId(request);
                 const statusCode = response.startLine.codeString();
                 let msg = "changed X-Daft-Response-Tag, private headers ";
                 msg += makePrivate ? "on" : "off";
