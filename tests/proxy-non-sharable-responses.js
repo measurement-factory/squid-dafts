@@ -18,7 +18,7 @@ import Test from "../src/overlord/Test";
 
 Config.Recognize([
     {
-    option: "clients-count",
+    option: "clients",
     type: "Number",
     default: "2",
     description: "number of clients",
@@ -54,7 +54,7 @@ export default class MyTest extends Test {
 
     static Configurators() {
         const configGen = new ConfigGen();
-        configGen.addGlobalConfigVariation({clientsCount: ["clients-count", "2", "4"]});
+        configGen.addGlobalConfigVariation({clients: ["clients", "2", "4"]});
         return configGen.generateConfigurators();
     }
 
@@ -62,13 +62,13 @@ export default class MyTest extends Test {
         let testCase = new HttpTestCase('cache something');
         testCase.client().request.for(resource);
         testCase.server().serve(resource);
-        testCase.server().response.header.add("Cache-Control", "max-age=0");
+        testCase.server().response.header.add("Cache-Control", "max-age=0, must-revalidate");
         await testCase.run();
     }
     
     async doSingleCheck(revalidation, makePrivate)
     {
-        const clientsCount = Number.parseInt(Config.ClientsCount, 10);
+        const clientsCount = Number.parseInt(Config.Clients, 10);
     
         let resource = new Resource();
         resource.uri.address = AddressPool.ReserveListeningAddress();
@@ -97,8 +97,7 @@ export default class MyTest extends Test {
             for (let i = 0; i < clients.length; ++i) {
                 let request = clients[i].transaction().request;
                 let response = clients[i].transaction().response;
-                const sentID = request.id();
-                const receivedID = response.extractMatchingId(request);
+                const receivedID = response.requestId(request);
                 const statusCode = response.startLine.codeString();
                 let msg = "changed X-Daft-Response-Tag, private headers ";
                 msg += makePrivate ? "on" : "off";
@@ -129,7 +128,9 @@ export default class MyTest extends Test {
     async run(/*testRun*/) {
         console.log("Test A: the proxy must support entries sharing(collapsing)");
         await this.doCheck(false, false);
-        console.log("Test B: the proxy must not share private entries on revalidation");
+        console.log("Test B: the proxy must not share private entries");
+        await this.doCheck(false, true);
+        console.log("Test C: the proxy must not share private entries on revalidation");
         await this.doCheck(true, true);
     }
 }
