@@ -2,8 +2,7 @@
  * Copyright (C) 2015,2016 The Measurement Factory.
  * Licensed under the Apache License, Version 2.0.                       */
 
-/* Tests whether an HTTP proxy does not share
-   non-shareable(private) responses */
+/* Tests whether an HTTP proxy does not share non-shareable(private) responses */
 
 import HttpTestCase from "../src/test/HttpCase";
 import Resource from "../src/anyp/Resource";
@@ -16,13 +15,33 @@ import ConfigGen from "../src/test/ConfigGen";
 import assert from "assert";
 import Test from "../src/overlord/Test";
 
+// all clients arrive before response headers
+const soCollapsing = "ch-sh-sb";
+// all-but-one clients arrive after the proxy gets the response headers
+const soLiveFeeding = "sh-ch-sb";
+// all clients arrive before response headers on an internal proxy revalidation request
+const soInternalCollapsing = "ch-srh-srb";
+
 Config.Recognize([
     {
-    option: "clients",
-    type: "Number",
-    default: "2",
-    description: "number of clients",
-},
+        option: "clients",
+        type: "Number",
+        default: "2",
+        description: "number of clients",
+    },
+    {
+        // Here "clients" means all clients except the very 1st client that
+        // always starts the transaction. "c" is client, "s" is server, "h" is
+        // sent message headers, "r" is revalidation and "b" is sent message body.
+        option: "scenario",
+        type: "String",
+        enum: [soCollapsing, soLiveFeeding, soInternalCollapsing],
+        default: soCollapsing,
+        description: "\n" +
+            "\tch-sh-sb (clients send headers before server sends headers)\n"+
+            "\tsh-ch-sb (server sends headers before clients send headers)\n"+
+            "\tch-srh-srb (clients send headers before server sends revalidation headers)\n"
+    },
 ]);
 
 export default class MyTest extends Test {
@@ -49,12 +68,13 @@ export default class MyTest extends Test {
 
     _configureDut(cfg) {
         cfg.memoryCaching(true);
-        cfg.collapsedForwarding(true);
+        cfg.collapsedForwarding(Config.Scenario !== soLiveFeeding);
     }
 
     static Configurators() {
         const configGen = new ConfigGen();
-        configGen.addGlobalConfigVariation({clients: ["clients", "2", "4"]});
+        configGen.addGlobalConfigVariation({clients: ["2", "4"]});
+        configGen.addGlobalConfigVariation({scenario: [ soCollapsing, soLiveFeeding, soInternalCollapsing ]});
         return configGen.generateConfigurators();
     }
 
@@ -65,31 +85,61 @@ export default class MyTest extends Test {
         testCase.server().response.header.add("Cache-Control", "max-age=0, must-revalidate");
         await testCase.run();
     }
+
+    _blockClient(hitClient, missClient, testCase) {
+        if (Config.Scenario === soLiveFeeding) {
+            hitClient.transaction().blockSendingUntil(
+                missClient.transaction().receivedHeaders(),
+                "wait for the miss response headers to reach the 1st client");
+        } else {
+            assert(Config.Scenario === soCollapsing || Config.Scenario === soInternalCollapsing);
+            hitClient.transaction().blockSendingUntil(
+                testCase.server().transaction().receivedEverything(),
+                "wait for the miss request to reach the server");
+        }
+    }
+
+    _blockServer(server, testCase) {
+        if (Config.Scenario === soLiveFeeding) {
+            server.transaction().blockSendingBodyUntil(
+                testCase.clientsSentEverything(),
+                "wait for all clients to send requests");
+        } else {
+            assert(Config.Scenario === soCollapsing || Config.Scenario === soInternalCollapsing);
+            server.transaction().blockSendingUntil(
+                testCase.clientsSentEverything(),
+                "wait for all clients to collapse");
+        }
+    }
     
-    async doSingleCheck(revalidation, makePrivate)
+    async checkOne(makePrivate)
     {
         const clientsCount = Number.parseInt(Config.Clients, 10);
+        console.log("clients = " + clientsCount);
     
         let resource = new Resource();
         resource.uri.address = AddressPool.ReserveListeningAddress();
         resource.modifiedAt(FuzzyTime.DistantPast());
         resource.finalize();
     
-        if (revalidation)
+        if (Config.Scenario === soInternalCollapsing)
             await this.cacheSomething(resource);
     
         let testCase = new HttpTestCase("send " + clientsCount.toString() + " requests to make Squid collapse on them");
-        testCase.client().request.for(resource);
+        let missClient = testCase.client();
+        missClient.request.for(resource);
+
         testCase.makeClients(clientsCount - 1, (client => {
             client.request.for(resource);
+            this._blockClient(client, missClient, testCase);
         }));
     
         testCase.server().serve(resource);
+
         if (makePrivate)
             makePrivate(testCase, resource);
-        testCase.server().transaction().blockSendingUntil(
-                testCase.clientsSentEverything(),
-                "wait for all clients to collapse");
+
+        this._blockServer(testCase.server(), testCase);
 
         testCase.check(() => {
             const clients = testCase.clients();
@@ -118,20 +168,15 @@ export default class MyTest extends Test {
         AddressPool.ReleaseListeningAddress(resource.uri.address);
     }
 
-    async doCheck(revalidation, isPrivate) {
-        await this.doSingleCheck(revalidation, isPrivate ? this.authClt : null);
-        await this.doSingleCheck(revalidation, isPrivate ? this.noStoreClt : null);
-        await this.doSingleCheck(revalidation, isPrivate ? this.noStoreSrv : null);
-        await this.doSingleCheck(revalidation, isPrivate ? this.privateSrv : null);
-    }
-
     async run(/*testRun*/) {
         console.log("Test A: the proxy must support entries sharing(collapsing)");
-        await this.doCheck(false, false);
+        await this.checkOne(null);
+
         console.log("Test B: the proxy must not share private entries");
-        await this.doCheck(false, true);
-        console.log("Test C: the proxy must not share private entries on revalidation");
-        await this.doCheck(true, true);
+        await this.checkOne(this.authClt);
+        await this.checkOne(this.noStoreClt);
+        await this.checkOne(this.noStoreSrv);
+        await this.checkOne(this.privateSrv);
     }
 }
 
