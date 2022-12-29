@@ -22,6 +22,11 @@ const soLiveFeeding = "sh-ch-sb";
 // all clients arrive before response headers on an internal proxy revalidation request
 const soInternalCollapsing = "ch-srh-srb";
 
+const auth = "authRequestHeader";
+const ccPrivate = "ccPrivateResponseHeader";
+const ccNoStoreReq = "ccNoStoreRequestHeader";
+const ccNoStoreResp = "ccNoStoreResponseHeader";
+
 Config.Recognize([
     {
         option: "clients",
@@ -42,29 +47,16 @@ Config.Recognize([
             "\tsh-ch-sb (server sends headers before clients send headers)\n"+
             "\tch-srh-srb (clients send headers before server sends revalidation headers)\n"
     },
+    {
+        option: "enforcePrivate",
+        type: "String",
+        enum: [auth, ccPrivate, ccNoStoreReq, ccNoStoreResp],
+        description: "specifies an HTTP header to be added into a request/response " +
+                     "in order to make the response private"
+    },
 ]);
 
 export default class MyTest extends Test {
-
-    authClt(cltTest, srvTest, resource) {
-        for (let client of cltTest.clients()) {
-            client.request.header.add("Authorization", "Basic dXNlcjpwYXNz"); // user:pass
-        }
-    }
-    
-    privateSrv(cltTest,resource) {
-        cltTest.server().response.header.add("Cache-Control", "private");
-    }
-    
-    noStoreClt(cltTest, resource) {
-        for (let client of cltTest.clients()) {
-            client.request.header.add("Cache-Control", "no-store");
-        }
-    }
-    
-    noStoreSrv(cltTest, resource) {
-        cltTest.server().response.header.add("Cache-Control", "no-store");
-    }
 
     _configureDut(cfg) {
         cfg.memoryCaching(true);
@@ -75,6 +67,7 @@ export default class MyTest extends Test {
         const configGen = new ConfigGen();
         configGen.addGlobalConfigVariation({clients: ["2", "4"]});
         configGen.addGlobalConfigVariation({scenario: [ soCollapsing, soLiveFeeding, soInternalCollapsing ]});
+        configGen.addGlobalConfigVariation({enforcePrivate: [ auth, ccPrivate, ccNoStoreReq, ccNoStoreResp ]});
         return configGen.generateConfigurators();
     }
 
@@ -112,11 +105,27 @@ export default class MyTest extends Test {
                 "wait for all clients to collapse");
         }
     }
+
+    makePrivate(testCase) {
+        if (Config.EnforcePrivate === auth) {
+            for (let client of testCase.clients()) {
+                client.request.header.add("Authorization", "Basic dXNlcjpwYXNz"); // user:pass
+            }
+        } else if (Config.EnforcePrivate === ccPrivate) {
+            testCase.server().response.header.add("Cache-Control", "private");
+        } else if (Config.EnforcePrivate === ccNoStoreReq) {
+            for (let client of testCase.clients()) {
+                client.request.header.add("Cache-Control", "no-store");
+            }
+        } else {
+            assert(Config.EnforcePrivate === ccNoStoreResp);
+            testCase.server().response.header.add("Cache-Control", "no-store");
+        }
+    }
     
-    async checkOne(makePrivate)
+    async checkOne()
     {
         const clientsCount = Number.parseInt(Config.Clients, 10);
-        console.log("clients = " + clientsCount);
     
         let resource = new Resource();
         resource.uri.address = AddressPool.ReserveListeningAddress();
@@ -137,8 +146,7 @@ export default class MyTest extends Test {
     
         testCase.server().serve(resource);
 
-        if (makePrivate)
-            makePrivate(testCase, resource);
+        this.makePrivate(testCase);
 
         this._blockServer(testCase.server(), testCase);
 
@@ -150,16 +158,12 @@ export default class MyTest extends Test {
                 let response = clients[i].transaction().response;
                 const receivedID = response.requestId(request);
                 const statusCode = response.startLine.codeString();
-                let msg = "changed X-Daft-Response-Tag, private headers ";
-                msg += makePrivate ? "on" : "off";
                 if (i === 0) {
                     assert.equal(statusCode, 200);
-                    assert.equal(parentID, receivedID, msg);
+                    assert.equal(parentID, receivedID, "sent and received request IDs must be the same");
                 } else {
-                    if (!makePrivate)
-                        assert.equal(parentID, receivedID, msg);
-                    else // expecting 200 or 50x
-                        assert(parentID !== receivedID);
+                    // expecting 200 or 50x
+                    assert(parentID !== receivedID);
                 }
             }
         });
@@ -170,14 +174,7 @@ export default class MyTest extends Test {
     }
 
     async run(/*testRun*/) {
-        console.log("Test A: the proxy must support entries sharing(collapsing)");
-        await this.checkOne(null);
-
-        console.log("Test B: the proxy must not share private entries");
-        await this.checkOne(this.authClt);
-        await this.checkOne(this.noStoreClt);
-        await this.checkOne(this.noStoreSrv);
-        await this.checkOne(this.privateSrv);
+        await this.checkOne();
     }
 }
 
