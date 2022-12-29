@@ -82,7 +82,8 @@ export default class MyTest extends Test {
         let testCase = new HttpTestCase('cache something');
         testCase.client().request.for(resource);
         testCase.server().serve(resource);
-        testCase.server().response.header.add("Cache-Control", "max-age=0, must-revalidate");
+        if (Config.Scenario === soInternalCollapsing);
+            testCase.server().response.header.add("Cache-Control", "max-age=0, must-revalidate"); // could use 'no-cache' instead
         await testCase.run();
     }
 
