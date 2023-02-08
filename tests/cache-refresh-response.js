@@ -193,7 +193,7 @@ export default class MyTest extends Test {
         assert(caseId <= WorkerIdMax);
 
         if (Config.pokeSameWorker())
-            return Config.ProxyListeningAddress;
+            return Config.proxyAuthority();
 
         // The first this._workerListeningAddresses element is a well-known
         // port address shared by all workers. We do not use it and iterate
