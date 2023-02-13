@@ -44,12 +44,12 @@ export default class MyTest extends Test {
     _configureDut(cfg) {
 
         if (Config.CacheType === 'disk')
-            cfg.custom(`cache_dir rock ${Config.CacheDirPath} ${DirSize} slot-size=${RockSlotSize}`);
+            cfg.diskCaching(true, `${DirSize} slot-size=${RockSlotSize}`);
         else 
             cfg.custom(`cache_mem ${MemSizeBytes} bytes`);
 
         if (Config.Smp) {
-            cfg.workers(3);
+            cfg.workers(4);
             cfg.dedicatedWorkerPorts(true);
             this._workerListeningAddresses = cfg.workerListeningAddresses();
         }
@@ -62,10 +62,10 @@ export default class MyTest extends Test {
         return configGen.generateConfigurators();
     }
 
-    async testStep(step, minimumHits, description) {
+    async testStep(step, minimumHits, description, iterations) {
         const address = AddressPool.ReserveListeningAddress();
         let hits = 0;
-        for (let i = 0; i < Slots; ++i) {
+        for (let i = 0; i < iterations; ++i) {
             let resource = new Resource();
             resource.uri.address = address;
             resource.makeCachable();
@@ -104,9 +104,9 @@ export default class MyTest extends Test {
 
     async testAll() {
         const address = AddressPool.ReserveListeningAddress();
-        await this.testStep(1, Slots, "Fill the cache");
-        await this.testStep(2, 0, "Overfill the cache");
-        await this.testStep(3, MinimumHits, "Check");
+        await this.testStep(1, MinimumHits, "Fill the cache", Slots);
+        await this.testStep(2, MinimumHits, "Overfill the cache", Slots);
+        await this.testStep(3, MinimumHits, "Check", Slots);
         AddressPool.ReleaseListeningAddress(address);
     }
 
