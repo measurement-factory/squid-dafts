@@ -16,9 +16,9 @@ import ConfigGen from "../src/test/ConfigGen";
 
 
 const CacheSize = 1; // MB
-const ResponseBytes = 1024 * 100;
+const ResponseBodyBytes = 1024 * 100;
 
-const ExpectedCapacity = Math.round(1024*1024*CacheSize/ResponseBytes);
+const ExpectedCapacity = Math.round(1024*1024*CacheSize/ResponseBodyBytes);
 // TODO: make configurable
 const MinimumHits = ExpectedCapacity/2+1;
 
@@ -67,10 +67,10 @@ export default class MyTest extends Test {
             let resource = new Resource();
             resource.uri.address = address;
             resource.makeCachable();
-            resource.body = new Body('x'.repeat(ResponseBytes));
+            resource.body = new Body('x'.repeat(ResponseBodyBytes));
             resource.finalize();
 
-            let missCase = new HttpTestCase(`${description}: forward a ${Config.BodySize}-byte response`);
+            let missCase = new HttpTestCase(`${description}: forward a ${ResponseBodyBytes}-byte response`);
             missCase.server().serve(resource);
             missCase.server().response.forceEof = Config.ResponseEndsAtEof;
             missCase.client().request.for(resource);
@@ -81,7 +81,7 @@ export default class MyTest extends Test {
 
             await this.dut.finishCaching();
 
-            let hitCase = new HttpTestCase(`${description}: hit a ${Config.BodySize}-byte response`);
+            let hitCase = new HttpTestCase(`${description}: hit a ${ResponseBodyBytes}-byte response`);
             hitCase.client().request.for(resource);
             if (Config.Smp)
                 hitCase.client().nextHopAddress = this._workerListeningAddresses[step];
