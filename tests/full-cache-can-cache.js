@@ -14,15 +14,13 @@ import * as AddressPool from "../src/misc/AddressPool";
 import Test from "../src/overlord/Test";
 import ConfigGen from "../src/test/ConfigGen";
 
+
+const CacheSize = 1; // MB
+const ResponseBytes = 1024 * 100;
+
+const ExpectedCapacity = Math.round(1024*1024*CacheSize/ResponseBytes);
 // TODO: make configurable
-const Slots = 10;
-const MinimumHits = Slots/2+1;
-
-const DirSize = 1; // MB
-const RockSlotSize = 100000; // bytes
-
-const MemSlotSize = 4096; // bytes
-const MemSizeBytes = MemSlotSize * Slots;
+const MinimumHits = ExpectedCapacity/2+1;
 
 Config.Recognize([
     {
@@ -44,9 +42,9 @@ export default class MyTest extends Test {
     _configureDut(cfg) {
 
         if (Config.CacheType === 'disk')
-            cfg.diskCaching(true, `${DirSize} slot-size=${RockSlotSize}`);
+            cfg.diskCaching(true, `${CacheSize}`);
         else 
-            cfg.custom(`cache_mem ${MemSizeBytes} bytes`);
+            cfg.memoryCaching(true,  `${CacheSize} MB`);
 
         if (Config.Smp) {
             cfg.workers(4);
@@ -62,14 +60,14 @@ export default class MyTest extends Test {
         return configGen.generateConfigurators();
     }
 
-    async testStep(step, minimumHits, description, iterations) {
+    async testStep(step, description) {
         const address = AddressPool.ReserveListeningAddress();
         let hits = 0;
-        for (let i = 0; i < iterations; ++i) {
+        for (let i = 0; i < ExpectedCapacity; ++i) {
             let resource = new Resource();
             resource.uri.address = address;
             resource.makeCachable();
-            resource.body = new Body();
+            resource.body = new Body('x'.repeat(ResponseBytes));
             resource.finalize();
 
             let missCase = new HttpTestCase(`${description}: forward a ${Config.BodySize}-byte response`);
@@ -98,15 +96,15 @@ export default class MyTest extends Test {
                 assert(response.startLine.codeInteger() === 503);
             }
         }
-        assert(hits >= minimumHits, "expected hit ratio");
+        assert(hits >= MinimumHits, "expected hit ratio");
         AddressPool.ReleaseListeningAddress(address);
     }
 
     async testAll() {
         const address = AddressPool.ReserveListeningAddress();
-        await this.testStep(1, MinimumHits, "Fill the cache", Slots);
-        await this.testStep(2, MinimumHits, "Overfill the cache", Slots);
-        await this.testStep(3, MinimumHits, "Check", Slots);
+        await this.testStep(1, "Fill the cache");
+        await this.testStep(2, "Overfill the cache");
+        await this.testStep(3, "Check");
         AddressPool.ReleaseListeningAddress(address);
     }
 
