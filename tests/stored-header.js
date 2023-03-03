@@ -95,7 +95,7 @@ Config.Recognize([
 
 class TestConfig
 {
-    static PrefixSize(blocks, delta) {
+    static ResponsePrefixSize(blocks, delta) {
         const firstBlock = DataBlockSize - SwapMetaHeaderSize;
         const fullBlocks = blocks === MaxBlock ? blocks - 2 : blocks -1;
         const lastBlock = blocks === MaxBlock ? SwapMetaHeaderSize : 0;
@@ -105,14 +105,15 @@ class TestConfig
     }
 
     static DataBlocks() {
-        if (Config.DataBlocks === undefined)
+        if (Config.DataBlocks === undefined) // XXX: Config access before configuration is generated
             return [1, 2, 8, 16, 17];
-        assert(Config.DataBlocks > 0);
-        return [Config.DataBlocks];
+        assert(Config.dataBlocks() > 0);
+        return [Config.dataBlocks()];
     }
 
     static Deltas() {
-        return Config.DataBlockDelta === undefined ? [-1, 0, 1] : [Config.DataBlockDelta];
+        // XXX: Config access before configuration is generated
+        return Config.DataBlockDelta === undefined ? [-1, 0, 1] : [Config.dataBlockDelta()];
     }
 
     static Prefixes() {
@@ -120,7 +121,7 @@ class TestConfig
         for (let b of TestConfig.DataBlocks()) {
             assert(b <= MaxBlock);
             for (let d of TestConfig.Deltas())
-                prefixes.push(TestConfig.PrefixSize(b, d));
+                prefixes.push(TestConfig.ResponsePrefixSize(b, d));
         }
         assert(prefixes.length > 0);
         return prefixes;
@@ -142,11 +143,11 @@ class TestConfig
 export default class MyTest extends Test {
 
     _configureDut(cfg) {
-        const memCache = Config.CacheType === 'mem' || Config.CacheType === 'all';
-        const diskCache = Config.CacheType === 'disk' || Config.CacheType === 'all';
+        const memCache = Config.cacheType() === 'mem' || Config.cacheType() === 'all';
+        const diskCache = Config.cacheType() === 'disk' || Config.cacheType() === 'all';
         cfg.memoryCaching(memCache);
         cfg.diskCaching(diskCache);
-        if (Config.Smp) {
+        if (Config.smp()) {
             cfg.workers(2);
             cfg.dedicatedWorkerPorts(true);
             this._workerListeningAddresses = cfg.workerListeningAddresses();
@@ -156,7 +157,7 @@ export default class MyTest extends Test {
     static Configurators() {
         const configGen = new ConfigGen();
 
-        configGen.addGlobalConfigVariation({prefixSize: TestConfig.Prefixes()});
+        configGen.addGlobalConfigVariation({responsePrefixSizeMinimum: TestConfig.Prefixes()});
 
         configGen.addGlobalConfigVariation({bodySize: TestConfig.Bodies()});
 
@@ -171,18 +172,18 @@ export default class MyTest extends Test {
 
     // creates an array of range pairs from configuration
     makeRange() {
-        const rangeName = Config.Range;
+        const rangeName = Config.range();
         const blocksNumber = 5;
         const minimumBodyLength = blocksNumber * 2;
         if (!rangeName || rangeName === 'none')
             return null;
 
-        if (Config.BodySize < minimumBodyLength) {
+        if (Config.bodySize() < minimumBodyLength) {
             console.log(`Warning: body length must be > ${minimumBodyLength}`);
             return null;
         }
 
-        const blockSize = Math.floor(Config.BodySize/blocksNumber);
+        const blockSize = Math.floor(Config.bodySize()/blocksNumber);
         const blocks = {low: [0], med: [2], high: [4], any: [0, 2, 4]};
         const name = Object.keys(blocks).find(v => v === rangeName);
         assert(name);
@@ -191,9 +192,9 @@ export default class MyTest extends Test {
 
     tooLargePrefix() {
         let largePrefixes = [];
-        largePrefixes.push(TestConfig.PrefixSize(MaxBlock, 0));
-        largePrefixes.push(TestConfig.PrefixSize(MaxBlock, 1));
-        return largePrefixes.some(e => e === Config.PrefixSize);
+        largePrefixes.push(TestConfig.ResponsePrefixSize(MaxBlock, 0));
+        largePrefixes.push(TestConfig.ResponsePrefixSize(MaxBlock, 1));
+        return largePrefixes.some(e => e === Config.responsePrefixSizeMinimum());
     }
 
     // whether the two arrays are equal
@@ -215,7 +216,7 @@ export default class MyTest extends Test {
     }
 
     async testTooLargeHeader() {
-        if (Config.Range !== 'none')
+        if (Config.range() !== 'none')
             return;
         let resource = new Resource();
         resource.makeCachable();
@@ -223,13 +224,13 @@ export default class MyTest extends Test {
         resource.body = new Body();
         resource.finalize();
 
-        let missCase = new HttpTestCase(`forward a response with ${Config.PrefixSize}-byte header and ${Config.BodySize}-byte body`);
+        let missCase = new HttpTestCase(`forward a response with ${Config.responsePrefixSizeMinimum()}-byte header and ${Config.bodySize()}-byte body`);
         missCase.server().serve(resource);
         missCase.client().request.for(resource);
         missCase.client().checks.add((client) => {
             client.expectStatusCode(431);
         });
-        if (Config.Smp)
+        if (Config.smp())
             missCase.client().nextHopAddress = this._workerListeningAddresses[1];
 
         await missCase.run();
@@ -241,18 +242,18 @@ export default class MyTest extends Test {
         const ranges = this.makeRange();
         if (!ranges)
             return;
-        if (Config.Smp)
+        if (Config.smp())
             return;
         let resource = new Resource();
         resource.makeCachable();
         resource.uri.address = AddressPool.ReserveListeningAddress();
-        resource.body = new Body(RandomText("body-", Config.BodySize), ranges);
+        resource.body = new Body(RandomText("body-", Config.bodySize()), ranges);
         resource.finalize();
 
-        let missCase = new HttpTestCase(`forward a response to a range request with ${Config.PrefixSize}-byte header and ${Config.BodySize}-byte body`);
+        let missCase = new HttpTestCase(`forward a response to a range request with ${Config.responsePrefixSizeMinimum()}-byte header and ${Config.bodySize()}-byte body`);
         missCase.server().serve(resource);
         missCase.server().response.startLine.code(206);
-        missCase.server().response.addRanges(ranges, Config.BodySize);
+        missCase.server().response.addRanges(ranges, Config.bodySize());
         missCase.client().request.for(resource);
         missCase.client().request.addRanges(ranges);
 
@@ -281,10 +282,10 @@ export default class MyTest extends Test {
         resource.body = new Body();
         resource.finalize();
 
-        let missCase = new HttpTestCase(`forward a response with ${Config.PrefixSize}-byte header and ${Config.BodySize}-byte body`);
+        let missCase = new HttpTestCase(`forward a response with ${Config.responsePrefixSizeMinimum()}-byte header and ${Config.bodySize()}-byte body`);
         missCase.server().serve(resource);
         missCase.client().request.for(resource);
-        if (Config.Smp)
+        if (Config.smp())
             missCase.client().nextHopAddress = this._workerListeningAddresses[1];
         missCase.addMissCheck();
 
@@ -294,9 +295,9 @@ export default class MyTest extends Test {
 
         const ranges = this.makeRange();
         const rangeDebugging = ranges ? 'with a range request' : '';
-        let hitCase = new HttpTestCase(`hit a response ${rangeDebugging} with ${Config.PrefixSize}-byte header and ${Config.BodySize}-byte body`);
+        let hitCase = new HttpTestCase(`hit a response ${rangeDebugging} with ${Config.responsePrefixSizeMinimum()}-byte header and ${Config.bodySize()}-byte body`);
         hitCase.client().request.for(resource);
-        if (Config.Smp)
+        if (Config.smp())
             hitCase.client().nextHopAddress = this._workerListeningAddresses[2];
         if (ranges) {
             hitCase.client().request.addRanges(ranges);
