@@ -57,11 +57,16 @@ sizeof(Prefix)+sizeof(fields) = 1+sizeof(int)+4*(1+sizeof(int))+16+44+38+8 = 5+2
 */
 const SwapMetaHeaderSize = 131;
 
+// expected reply_header_max_size (default) setting
+const ResponsePrefixSizeMaximum = 64*1024;
+
 // Squid constant
 const DataBlockSize = 4096;
 
-// 64K Squid prefix limitation
-const MaxBlock = 17;
+// XXX: Explain why we assume zero body size here (or stop assuming?).
+// XXX: Account for Rock db cell metadata
+const StoredEntrySizeMax = ResponsePrefixSizeMaximum + SwapMetaHeaderSize;
+const MaxBlock = Math.ceil(StoredEntrySizeMax / DataBlockSize);
 
 Config.Recognize([
     {
@@ -94,7 +99,9 @@ class TestConfig
         const firstBlock = DataBlockSize - SwapMetaHeaderSize;
         const fullBlocks = blocks === MaxBlock ? blocks - 2 : blocks -1;
         const lastBlock = blocks === MaxBlock ? SwapMetaHeaderSize : 0;
-        return firstBlock + DataBlockSize * fullBlocks + lastBlock + delta;
+        const total = firstBlock + DataBlockSize * fullBlocks + lastBlock + delta;
+        // Do not produce responses that are going to be rejected before storage.
+        return Math.min(total, ResponsePrefixSizeMaximum);
     }
 
     static DataBlocks() {
