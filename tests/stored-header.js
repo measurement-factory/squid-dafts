@@ -57,8 +57,10 @@ sizeof(Prefix)+sizeof(fields) = 1+sizeof(int)+4*(1+sizeof(int))+16+44+38+8 = 5+2
 */
 const SwapMetaHeaderSize = 131;
 
-// expected reply_header_max_size (default) setting
-const ResponsePrefixSizeMaximum = 64*1024;
+// Expected reply_header_max_size (default) setting minus 1. We subtract one
+// because Squid interprets the setting as the prohibited "too large" size
+// rather than the allowed maximum size.
+const ResponsePrefixSizeMaximum = 64*1024 - 1;
 
 // Squid constant
 const DataBlockSize = 4096;
@@ -190,13 +192,6 @@ export default class MyTest extends Test {
         return blocks[name].map(block => [block*blockSize, (block+1)*blockSize - 1]);
     }
 
-    tooLargePrefix() {
-        let largePrefixes = [];
-        largePrefixes.push(TestConfig.ResponsePrefixSize(MaxBlock, 0));
-        largePrefixes.push(TestConfig.ResponsePrefixSize(MaxBlock, 1));
-        return largePrefixes.some(e => e === Config.responsePrefixSizeMinimum());
-    }
-
     // whether the two arrays are equal
     arraysAreEqual(a1, a2) {
         const isA1 = Array.isArray(a1);
@@ -213,29 +208,6 @@ export default class MyTest extends Test {
                 return false;
         }
         return true;
-    }
-
-    async testTooLargeHeader() {
-        if (Config.range() !== 'none')
-            return;
-        let resource = new Resource();
-        resource.makeCachable();
-        resource.uri.address = AddressPool.ReserveListeningAddress();
-        resource.body = new Body();
-        resource.finalize();
-
-        let missCase = new HttpTestCase(`forward a response with ${Config.responsePrefixSizeMinimum()}-byte header and ${Config.bodySize()}-byte body`);
-        missCase.server().serve(resource);
-        missCase.client().request.for(resource);
-        missCase.client().checks.add((client) => {
-            client.expectStatusCode(431);
-        });
-        if (Config.smp())
-            missCase.client().nextHopAddress = this._workerListeningAddresses[1];
-
-        await missCase.run();
-
-        AddressPool.ReleaseListeningAddress(resource.uri.address);
     }
 
     async testRangeResponse() {
@@ -316,12 +288,8 @@ export default class MyTest extends Test {
     }
 
     async run(/*testRun*/) {
-        if (this.tooLargePrefix()) {
-            await this.testTooLargeHeader();
-        } else {
-            await this.testRangeResponse();
-            await this.testCaching();
-        }
+        await this.testRangeResponse();
+        await this.testCaching();
     }
 }
 
