@@ -82,6 +82,7 @@ Config.Recognize([
         description: "Allows to generate a header that will be less, equal to, or greater than the data blocks size",
     },
     {
+        // XXX: Replace with dut-cache-...
         option: "cache-type",
         type: "String",
         enum: ["mem", "disk", "all"],
