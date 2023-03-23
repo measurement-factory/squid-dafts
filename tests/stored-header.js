@@ -94,6 +94,13 @@ Config.Recognize([
         default: "false",
         description: "In this mode MISS and HIT requests will go to different proxy SMP workers",
     },
+    {
+        option: "request-range",
+        type: "String",
+        enum: ["none", "low", "med", "high", "multi"],
+        default: "none",
+        description: "HTTP Range request header to send to the proxy",
+    },
 ]);
 
 class TestConfig
@@ -135,7 +142,7 @@ class TestConfig
     }
 
     static Ranges() {
-        return ['none', 'low', 'med', 'high', 'any'];
+        return ['none', 'low', 'med', 'high', 'multi'];
     }
 
     static cacheType() { return [ 'mem', 'disk', 'all' ]; }
@@ -164,7 +171,7 @@ export default class MyTest extends Test {
 
         configGen.addGlobalConfigVariation({bodySize: TestConfig.Bodies()});
 
-        configGen.addGlobalConfigVariation({range: TestConfig.Ranges()});
+        configGen.addGlobalConfigVariation({requestRange: TestConfig.Ranges()});
 
         configGen.addGlobalConfigVariation({cacheType: TestConfig.cacheType()});
 
@@ -175,7 +182,7 @@ export default class MyTest extends Test {
 
     // creates an array of range pairs from configuration
     makeRange() {
-        const rangeName = Config.range();
+        const rangeName = Config.requestRange();
         const blocksNumber = 5;
         const minimumBodyLength = blocksNumber * 2;
         if (!rangeName || rangeName === 'none')
@@ -187,7 +194,12 @@ export default class MyTest extends Test {
         }
 
         const blockSize = Math.floor(Config.bodySize()/blocksNumber);
-        const blocks = {low: [0], med: [2], high: [4], any: [0, 2, 4]};
+        const blocks = {
+            low: [0],
+            med: [2],
+            high: [4],
+            multi: [0, 2, 4],
+        };
         const name = Object.keys(blocks).find(v => v === rangeName);
         assert(name);
         return blocks[name].map(block => [block*blockSize, (block+1)*blockSize - 1]);
