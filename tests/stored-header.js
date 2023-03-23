@@ -105,7 +105,7 @@ class TestConfig
     }
 
     static Bodies() {
-        return [0, Config.DefaultBodySize()];
+        return [0, Config.DefaultBodySize(), Config.LargeBodySize()];
     }
 
     static Ranges() {
