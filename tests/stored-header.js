@@ -82,8 +82,22 @@ class TestConfig
     }
 
     static DataBlocks() {
-        if (Config.DataBlocks === undefined) // XXX: Config access before configuration is generated
-            return [1, 2, 8, 16, 17];
+        if (Config.DataBlocks === undefined) { // XXX: Config access before configuration is generated?
+            return [
+                1, // single disk page boundary
+                // TODO: Drop 2 because 8 will test no-metadata case?
+                2, // two disk pages, the second one without swap metadata
+                8, // shared memory page size boundary
+                // TODO: Probably only 16 below is needed because +1 delta
+                // will test 17 as well. However, there may be other reasons
+                // to cross that 64KB threshold (with an increased
+                // reply_header_max_size). XXX: We stopped triggering 431
+                // responses so anything beyond 16 will be skipped?
+                16, // default reply_header_max_size boundary
+                17, // exceeds default reply_header_max_size
+            ];
+        }
+
         assert(Config.dataBlocks() > 0);
         return [Config.dataBlocks()];
     }
