@@ -70,39 +70,6 @@ const DataBlockSize = 4096;
 const StoredEntrySizeMax = ResponsePrefixSizeMaximum + SwapMetaHeaderSize;
 const MaxBlock = Math.ceil(StoredEntrySizeMax / DataBlockSize);
 
-Config.Recognize([
-    {
-        option: "data-blocks",
-        type: "Number",
-        description: `The number of Squid swap data blocks (${DataBlockSize} bytes each) that will be occupied by the response header`,
-    },
-    {
-        option: "data-block-delta",
-        type: "Number",
-        description: "Allows to generate a header that will be less, equal to, or greater than the data blocks size",
-    },
-    {
-        // XXX: Replace with dut-cache-...
-        option: "cache-type",
-        type: "String",
-        enum: ["mem", "disk", "all"],
-        description: "Turns on rock disk cache",
-    },
-    {
-        option: "smp",
-        type: "Boolean",
-        default: "false",
-        description: "In this mode MISS and HIT requests will go to different proxy SMP workers",
-    },
-    {
-        option: "request-range",
-        type: "String",
-        enum: ["none", "low", "med", "high", "multi"],
-        default: "none",
-        description: "HTTP Range request header to send to the proxy",
-    },
-]);
-
 class TestConfig
 {
     static ResponsePrefixSize(blocks, delta) {
@@ -142,7 +109,7 @@ class TestConfig
     }
 
     static Ranges() {
-        return ['none', 'low', 'med', 'high', 'multi'];
+        return ['none', 'first', 'middle', 'last', 'whole', 'beyond', 'multi'];
     }
 
     static cacheType() { return [ 'mem', 'disk', 'all' ]; }
@@ -180,29 +147,92 @@ export default class MyTest extends Test {
         return configGen.generateConfigurators();
     }
 
-    // creates an array of range pairs from configuration
-    makeRange() {
-        const rangeName = Config.requestRange();
-        const blocksNumber = 5;
-        const minimumBodyLength = blocksNumber * 2;
-        if (!rangeName || rangeName === 'none')
-            return null;
+    // a single named range pair
+    // might return invalid offsets; the caller must check
+    _makeRange(rangeName) {
+        // HTTP byte ranges are inclusive and their offsets start at zero
+        const lastPos = Config.bodySize() - 1;
 
-        if (Config.bodySize() < minimumBodyLength) {
-            console.log(`Warning: body length must be > ${minimumBodyLength}`);
-            return null;
+        if (rangeName === "first") {
+            return [ 0, 0 ];
         }
 
-        const blockSize = Math.floor(Config.bodySize()/blocksNumber);
-        const blocks = {
-            low: [0],
-            med: [2],
-            high: [4],
-            multi: [0, 2, 4],
-        };
-        const name = Object.keys(blocks).find(v => v === rangeName);
-        assert(name);
-        return blocks[name].map(block => [block*blockSize, (block+1)*blockSize - 1]);
+        if (rangeName === "middle") {
+            const middleByteOffset = Math.floor(Config.bodySize()/2);
+            return [ middleByteOffset, middleByteOffset ];
+        }
+
+        if (rangeName === "last") {
+            return [ lastPos, lastPos];
+        }
+
+        if (rangeName === "whole") {
+            return [ 0, lastPos];
+        }
+
+        if (rangeName === "beyond") {
+            return [ lastPos, lastPos + 1 ];
+        }
+
+        assert(false); // unknown (to this method) single-range rangeName
+    }
+
+    // (an array of range pairs or null) matching current configuration
+    makeRanges() {
+        // XXX: The two exceptions below should be reflected in generated
+        // configurations, so that we do not test multiple effectively
+        // identical (X, Y, ..., unsatisfiable range) configurations.
+
+        // when the body is empty, all ranges are unsatisfiable, and we do not
+        // test those
+        if (!Config.bodySize())
+            return null;
+
+        // TODO: Why not?
+        if (Config.smp())
+            return null;
+
+        const rangeKind = Config.requestRange();
+
+        if (rangeKind === "none")
+            return null;
+
+        if (rangeKind === "multi") {
+            // a few single ranges, in increasing order of the first offset
+            return this._validRanges(
+                this._makeRange("first"),
+                this._makeRange("middle"),
+                this._makeRange("last"),
+            );
+        }
+
+        // the remaining specs are all single-range specs
+        return this._validRanges(this._makeRange(rangeKind));
+    }
+
+    _validRanges(...rawRanges) {
+        assert(rawRanges.length > 0);
+        let result = [];
+
+        let addedLastPos = undefined;
+        for (const range of rawRanges) {
+            assert.strictEqual(range.length, 2);
+            if (range[0] > range[1])
+                continue; // no first-pos > last-pos ranges
+            if (range[0] >= Config.bodySize())
+                continue; // no unsatisfiable ranges
+            if (addedLastPos !== undefined && addedLastPos >= range[0])
+                continue; // no overlapping ranges
+            result.push(range);
+        }
+
+        if (result.length !== rawRanges.length) {
+            console.log(`Warning: Skipped ${rawRanges.length-result.length} bad range spec(s):`,
+                "\ngiven:    ", rawRanges,
+                "\nreturning:", result);
+        }
+
+        return result.length > 0 ? result : null;
     }
 
     // whether the two arrays are equal
@@ -224,11 +254,10 @@ export default class MyTest extends Test {
     }
 
     async testRangeResponse() {
-        const ranges = this.makeRange();
+        const ranges = this.makeRanges();
         if (!ranges)
             return;
-        if (Config.smp())
-            return;
+
         let resource = new Resource();
         resource.makeCachable();
         resource.uri.address = AddressPool.ReserveListeningAddress();
@@ -247,7 +276,11 @@ export default class MyTest extends Test {
         missCase.client().checks.add((client) => {
             client.expectStatusCode(206);
             const response = client.transaction().response;
-            assert(this.arraysAreEqual(ranges, response.ranges));
+            // XXX: We cannot easily compare ranges because requested high in
+            // a "beyond" range may be higher than the high in the response:
+            // this.arraysAreEqual(ranges, response.ranges).
+            // TODO: Test that the expected _content_ was received.
+            assert.strictEqual(ranges.length, response.ranges.length);
         });
 
         missCase.server().checks.add((server) => {
@@ -278,7 +311,7 @@ export default class MyTest extends Test {
 
         await this.dut.finishCaching();
 
-        const ranges = this.makeRange();
+        const ranges = this.makeRanges();
         const rangeDebugging = ranges ? 'with a range request' : '';
         let hitCase = new HttpTestCase(`hit a response ${rangeDebugging} with ${Config.responsePrefixSizeMinimum()}-byte header and ${Config.bodySize()}-byte body`);
         hitCase.client().request.for(resource);
@@ -289,7 +322,10 @@ export default class MyTest extends Test {
             hitCase.client().checks.add((client) => {
                 client.expectStatusCode(206);
                 const response = client.transaction().response;
-                assert(this.arraysAreEqual(ranges, response.ranges));
+                // XXX: See another XXX about this commented out check.
+                // XXXX: Code duplication
+                // assert(this.arraysAreEqual(ranges, response.ranges));
+                assert.strictEqual(ranges.length, response.ranges.length);
             });
         } else {
             hitCase.addHitCheck(missCase.server().transaction().response);
@@ -305,4 +341,37 @@ export default class MyTest extends Test {
         await this.testCaching();
     }
 }
+
+Config.Recognize([
+    {
+        option: "data-blocks",
+        type: "Number",
+        description: `The number of Squid swap data blocks (${DataBlockSize} bytes each) that will be occupied by the response header`,
+    },
+    {
+        option: "data-block-delta",
+        type: "Number",
+        description: "Allows to generate a header that will be less, equal to, or greater than the data blocks size",
+    },
+    {
+        // XXX: Replace with dut-cache-...
+        option: "cache-type",
+        type: "String",
+        enum: ["mem", "disk", "all"],
+        description: "Turns on rock disk cache",
+    },
+    {
+        option: "smp",
+        type: "Boolean",
+        default: "false",
+        description: "In this mode MISS and HIT requests will go to different proxy SMP workers",
+    },
+    {
+        option: "request-range",
+        type: "String",
+        enum: TestConfig.Ranges(),
+        default: "none",
+        description: "HTTP Range request header to send to the proxy",
+    },
+]);
 
