@@ -11,7 +11,7 @@ import Resource from "../src/anyp/Resource";
 import * as Config from "../src/misc/Config";
 import * as AddressPool from "../src/misc/AddressPool";
 import Test from "../src/overlord/Test";
-import ConfigGen from "../src/test/ConfigGen";
+import * as ConfigurationGenerator from "../src/test/ConfigGen";
 import { RandomText } from "../src/misc/Gadgets";
 
 /*
@@ -123,7 +123,7 @@ class TestConfig
     }
 
     static Ranges() {
-        return ['none', 'first', 'middle', 'last', 'whole', 'beyond', 'multi'];
+        return ['none', 'first', 'middle', 'last', 'beyond', 'fat', 'whole', 'multi'];
     }
 
     static cacheType() { return [ 'mem', 'disk', 'all' ]; }
@@ -146,26 +146,77 @@ export default class MyTest extends Test {
     }
 
     static Configurators() {
-        const configGen = new ConfigGen();
+        const configGen = new ConfigurationGenerator.FlexibleConfigGen();
 
-        configGen.addGlobalConfigVariation({responsePrefixSizeMinimum: TestConfig.Prefixes()});
+        configGen.bodySize(TestConfig.Bodies());
 
-        configGen.addGlobalConfigVariation({bodySize: TestConfig.Bodies()});
+        // Do not attempt to filter our incompatible (rangeName, bodySize)
+        // pairs inside the generator function because the function is not
+        // called when the configuration parameter is explicitly configured.
+        // Explicitly configured values may also lead to incompatible pairs.
+        configGen.requestRange(TestConfig.Ranges());
 
-        configGen.addGlobalConfigVariation({requestRange: TestConfig.Ranges()});
+        // check ASAP, to minimize the number of configurations to scan/drop
+        // and reduce configuration summation overheads
+        configGen.dropInvalidConfigurations(MyTest._CheckConfiguration);
+        configGen.dropDuplicateConfigurations(MyTest._SummarizeEarlyConfiguration);
 
-        configGen.addGlobalConfigVariation({cacheType: TestConfig.cacheType()});
+        configGen.responsePrefixSizeMinimum(TestConfig.Prefixes());
 
-        configGen.addGlobalConfigVariation({smp: TestConfig.smpMode()});
+        configGen.cacheType(TestConfig.cacheType());
+
+        configGen.smp(TestConfig.smpMode());
 
         return configGen.generateConfigurators();
     }
 
-    // a single named range pair
-    // might return invalid offsets; the caller must check
-    _makeRange(rangeName) {
+    static _CheckConfiguration(cfg) {
+        /* void */ MyTest._MakeRangeSpec(cfg.requestRange(), cfg.bodySize());
+    }
+
+    // a (cfg.requestRange(), cfg.bodySize())-based gist, suitable only for
+    // early removal of configuration duplicates based on those two settings
+    static _SummarizeEarlyConfiguration(cfg) {
+        const rangeSpecs = MyTest._MakeRangeSpec(cfg.requestRange(), cfg.bodySize());
+        return `${rangeSpecs}/${cfg.bodySize()}`;
+    }
+
+    static _MakeRangeSpec(rangeName, bodySize) {
+        if (rangeName === "none")
+            return null;
+
+        if (rangeName === "multi") {
+            // a few single-range specs, in increasing order of the first offset
+            const rangeSpecsRaw = [
+                MyTest._MakeRawSingleRangeSpec("first", bodySize),
+                MyTest._MakeRawSingleRangeSpec("middle", bodySize),
+                MyTest._MakeRawSingleRangeSpec("last", bodySize),
+            ];
+
+            // filter out individual failed entries
+            const rangeSpecs = rangeSpecsRaw.filter(
+                rangeSpec => MyTest._ValidRangeSpec(rangeSpec, bodySize));
+
+            // we do not filter out _overlapping_ range specs (yet?)
+
+            // the purpose of 'multi' is to test handling of _multiple_ specs
+            if (rangeSpecs.length <= 1)
+                throw new ConfigurationGenerator.ConfigurationError(`'multi' Range needs more than ${bodySize} body bytes`);
+            return rangeSpecs;
+        }
+
+        // the remaining specs are all single-range specs
+        const rangeSpec = MyTest._MakeRawSingleRangeSpec(rangeName, bodySize);
+        if (!MyTest._ValidRangeSpec(rangeSpec, bodySize))
+            throw new ConfigurationGenerator.ConfigurationError(`'${rangeName}' Range needs more than ${bodySize} body bytes`);
+        return [ rangeSpec ];
+    }
+
+    // A single [low, high] range specification.
+    // May return invalid offsets; the caller must check!
+    static _MakeRawSingleRangeSpec(rangeName, bodySize) {
         // HTTP byte ranges are inclusive and their offsets start at zero
-        const lastPos = Config.bodySize() - 1;
+        const lastPos = bodySize - 1;
 
         if (rangeName === "first") {
             return [ 0, 0 ];
@@ -180,6 +231,10 @@ export default class MyTest extends Test {
             return [ lastPos, lastPos];
         }
 
+        if (rangeName === "fat") {
+            return [ 1, lastPos - 1];
+        }
+
         if (rangeName === "whole") {
             return [ 0, lastPos];
         }
@@ -191,62 +246,20 @@ export default class MyTest extends Test {
         assert(false); // unknown (to this method) single-range rangeName
     }
 
-    // (an array of range pairs or null) matching current configuration
-    makeRanges() {
-        // XXX: The two exceptions below should be reflected in generated
-        // configurations, so that we do not test multiple effectively
-        // identical (X, Y, ..., unsatisfiable range) configurations.
-
-        // when the body is empty, all ranges are unsatisfiable, and we do not
-        // test those
-        if (!Config.bodySize())
-            return null;
-
-        // TODO: Why not?
-        if (Config.smp())
-            return null;
-
-        const rangeKind = Config.requestRange();
-
-        if (rangeKind === "none")
-            return null;
-
-        if (rangeKind === "multi") {
-            // a few single ranges, in increasing order of the first offset
-            return this._validRanges(
-                this._makeRange("first"),
-                this._makeRange("middle"),
-                this._makeRange("last"),
-            );
-        }
-
-        // the remaining specs are all single-range specs
-        return this._validRanges(this._makeRange(rangeKind));
+    static _ValidRangeSpec(rangeSpec, bodySize) {
+        assert.strictEqual(rangeSpec.length, 2);
+        if (rangeSpec[0] < 0 || rangeSpec[1] < 0)
+            return false; // no negative offsets
+        if (rangeSpec[0] > rangeSpec[1])
+            return false; // no first-pos > last-pos ranges
+        if (rangeSpec[0] >= bodySize)
+            return false; // no unsatisfiable ranges
+        return true;
     }
 
-    _validRanges(...rawRanges) {
-        assert(rawRanges.length > 0);
-        let result = [];
-
-        let addedLastPos = undefined;
-        for (const range of rawRanges) {
-            assert.strictEqual(range.length, 2);
-            if (range[0] > range[1])
-                continue; // no first-pos > last-pos ranges
-            if (range[0] >= Config.bodySize())
-                continue; // no unsatisfiable ranges
-            if (addedLastPos !== undefined && addedLastPos >= range[0])
-                continue; // no overlapping ranges
-            result.push(range);
-        }
-
-        if (result.length !== rawRanges.length) {
-            console.log(`Warning: Skipped ${rawRanges.length-result.length} bad range spec(s):`,
-                "\ngiven:    ", rawRanges,
-                "\nreturning:", result);
-        }
-
-        return result.length > 0 ? result : null;
+    // (an array of range pairs or null) matching current configuration
+    makeRangeSpecs() {
+        return MyTest._MakeRangeSpec(Config.requestRange(), Config.bodySize());
     }
 
     // whether the two arrays are equal
@@ -268,7 +281,7 @@ export default class MyTest extends Test {
     }
 
     async testRangeResponse() {
-        const ranges = this.makeRanges();
+        const ranges = this.makeRangeSpecs();
         if (!ranges)
             return;
 
@@ -325,9 +338,9 @@ export default class MyTest extends Test {
 
         await this.dut.finishCaching();
 
-        const ranges = this.makeRanges();
-        const rangeDebugging = ranges ? 'with a range request' : '';
-        let hitCase = new HttpTestCase(`hit a response ${rangeDebugging} with ${Config.responsePrefixSizeMinimum()}-byte header and ${Config.bodySize()}-byte body`);
+        const ranges = this.makeRangeSpecs();
+        const hitHow = ranges ? ` with a '${Config.requestRange()}' range request` : '';
+        const hitCase = new HttpTestCase(`hit a ${Config.responsePrefixSizeMinimum()}-byte header and ${Config.bodySize()}-byte body response${hitHow}`);
         hitCase.client().request.for(resource);
         if (Config.smp())
             hitCase.client().nextHopAddress = this._workerListeningAddresses[2];
