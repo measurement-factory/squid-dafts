@@ -138,11 +138,15 @@ export default class MyTest extends Test {
         const diskCache = Config.cacheType() === 'disk' || Config.cacheType() === 'all';
         cfg.memoryCaching(memCache);
         cfg.diskCaching(diskCache);
+
         if (Config.smp()) {
             cfg.workers(2);
             cfg.dedicatedWorkerPorts(true);
             this._workerListeningAddresses = cfg.workerListeningAddresses();
         }
+
+        if (Config.dutRequestsWhole())
+            cfg.custom("range_offset_limit 10 GB");
     }
 
     static Configurators() {
@@ -166,6 +170,8 @@ export default class MyTest extends Test {
         configGen.cacheType(TestConfig.cacheType());
 
         configGen.smp(TestConfig.smpMode());
+
+        configGen.dutRequestsWhole([ false, true ]);
 
         return configGen.generateConfigurators();
     }
@@ -296,7 +302,22 @@ export default class MyTest extends Test {
         missCase.client().request.for(resource);
         missCase.client().request.addRanges(ranges);
 
-        missCase.addMissCheck();
+        if (Config.dutRequestsWhole()) {
+            // cannot do missCase.addMissCheck() because the proxy does not
+            // forward the whole message from server to the client
+
+            missCase.server().checks.add((server) => {
+                const request = server.transaction().request;
+                assert(!request.header.has('Range')); // TODO: codify
+            });
+        } else {
+            missCase.addMissCheck();
+
+            missCase.server().checks.add((server) => {
+                const request = server.transaction().request;
+                assert(this.arraysAreEqual(ranges, request.header.byteRanges()));
+            });
+        }
 
         missCase.client().checks.add((client) => {
             client.expectStatusCode(206);
@@ -306,11 +327,6 @@ export default class MyTest extends Test {
             // this.arraysAreEqual(ranges, response.ranges).
             // TODO: Test that the expected _content_ was received.
             assert.strictEqual(ranges.length, response.ranges.length);
-        });
-
-        missCase.server().checks.add((server) => {
-            const request = server.transaction().request;
-            assert(this.arraysAreEqual(ranges, request.parseRangeHeader()));
         });
 
         await missCase.run();
@@ -397,6 +413,12 @@ Config.Recognize([
         enum: TestConfig.Ranges(),
         default: "none",
         description: "HTTP Range request header to send to the proxy",
+    },
+    {
+        option: "dut-requests-whole",
+        type: "Boolean",
+        default: "false",
+        description: "proxy must request the whole response and extract Range parts from it",
     },
 ]);
 
