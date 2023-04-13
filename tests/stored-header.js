@@ -245,11 +245,9 @@ export default class MyTest extends Test {
             return [ 0, lastPos];
         }
 
-        if (rangeName === "beyond") {
-            return [ lastPos, lastPos + 1 ];
-        }
-
-        assert(false); // unknown (to this method) single-range rangeName
+        // were we given an unknown (to this method) single-range rangeName?
+        assert(rangeName === "beyond");
+        return [ lastPos, lastPos + 1 ];
     }
 
     static _ValidRangeSpec(rangeSpec, bodySize) {
