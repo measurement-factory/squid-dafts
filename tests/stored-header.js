@@ -293,8 +293,6 @@ export default class MyTest extends Test {
 
         let missCase = new HttpTestCase(`forward a response to a range request with ${Config.responsePrefixSizeMinimum()}-byte header and ${Config.bodySize()}-byte body`);
         missCase.server().serve(resource);
-        missCase.server().response.startLine.code(206);
-        missCase.server().response.addRanges(ranges, Config.bodySize());
         missCase.client().request.for(resource);
         missCase.client().request.addRanges(ranges);
 
