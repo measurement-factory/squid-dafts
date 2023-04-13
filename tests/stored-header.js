@@ -81,37 +81,45 @@ class TestConfig
         return Math.min(total, ResponsePrefixSizeMaximum);
     }
 
-    static DataBlocks() {
-        if (Config.DataBlocks === undefined) { // XXX: Config access before configuration is generated?
-            return [
-                1, // single disk page boundary
-                // TODO: Drop 2 because 8 will test no-metadata case?
-                2, // two disk pages, the second one without swap metadata
-                8, // shared memory page size boundary
-                // TODO: Probably only 16 below is needed because +1 delta
-                // will test 17 as well. However, there may be other reasons
-                // to cross that 64KB threshold (with an increased
-                // reply_header_max_size). XXX: We stopped triggering 431
-                // responses so anything beyond 16 will be skipped?
-                16, // default reply_header_max_size boundary
-                17, // exceeds default reply_header_max_size
-            ];
-        }
+    static DataBlocks(cfg) {
+        if (cfg.DataBlocks !== undefined) // XXX: Typo-unsafe field access
+            return [cfg.dataBlocks()];
 
-        assert(Config.dataBlocks() > 0);
-        return [Config.dataBlocks()];
+        // "Interesting" block numbers:
+        // 1: single StoreIOBuffer and local memory page (mem_node) boundary
+        // 4: rock cache_dir slot size boundary (16KB)
+        // 8: shared memory page size boundary (32KB)
+        // 16: default reply_header_max_size boundary (and our test maximum)
+
+        // We always test with 1 and 16 blocks because we want to test with
+        // the minimum number of Store activity and with the largest prefix.
+
+        if (cfg.cacheType() === "none")
+            return [1, 16];
+
+        if (cfg.cacheType() === "disk") // rock slots
+            return [1, 4, 16];
+
+        if (cfg.cacheType() === "mem" && !cfg.smp()) // local memory pages
+            return [1, 16];
+
+        if (cfg.cacheType() === "mem" && cfg.smp()) // shared memory pages
+            return [1, 8, 16];
+
+        assert(cfg.cacheType() === "all");
+        return [1, 4, 8, 16];
     }
 
-    static Deltas() {
-        // XXX: Config access before configuration is generated
-        return Config.DataBlockDelta === undefined ? [-1, 0, 1] : [Config.dataBlockDelta()];
+    static Deltas(cfg) {
+        // XXX: Typo-unsafe field access
+        return cfg.DataBlockDelta === undefined ? [-1, 0, 1] : [cfg.dataBlockDelta()];
     }
 
-    static Prefixes() {
+    static Prefixes(cfg) {
         let prefixes = [];
-        for (let b of TestConfig.DataBlocks()) {
+        for (let b of TestConfig.DataBlocks(cfg)) {
             assert(b <= MaxBlock);
-            for (let d of TestConfig.Deltas())
+            for (let d of TestConfig.Deltas(cfg))
                 prefixes.push(TestConfig.ResponsePrefixSize(b, d));
         }
         assert(prefixes.length > 0);
@@ -125,10 +133,6 @@ class TestConfig
     static Ranges() {
         return ['none', 'first', 'middle', 'last', 'beyond', 'fat', 'whole', 'multi'];
     }
-
-    static cacheType() { return [ 'mem', 'disk', 'all' ]; }
-
-    static smpMode() { return [ false, true ]; }
 }
 
 export default class MyTest extends Test {
@@ -165,19 +169,37 @@ export default class MyTest extends Test {
         configGen.dropInvalidConfigurations(MyTest._CheckConfiguration);
         configGen.dropDuplicateConfigurations(MyTest._SummarizeEarlyConfiguration);
 
-        configGen.responsePrefixSizeMinimum(TestConfig.Prefixes());
-
-        configGen.cacheType(TestConfig.cacheType());
-
-        configGen.smp(TestConfig.smpMode());
-
         configGen.dutRequestsWhole([ false, true ]);
+
+        configGen.cacheType(function *(cfg) {
+            yield "none";
+            if (cfg.dutRequestsWhole()) {
+                yield "disk";
+                yield "mem";
+                yield "all";
+            }
+            // else Squid would not cache the 206 (Partial Content) response
+        });
+
+        configGen.smp(function *(cfg) {
+            yield false;
+            if (cfg.cacheType() !== "none")
+                yield true;
+        });
+
+        configGen.responsePrefixSizeMinimum(function *(cfg) {
+            yield *(TestConfig.Prefixes(cfg));
+        });
 
         return configGen.generateConfigurators();
     }
 
     static _CheckConfiguration(cfg) {
         /* void */ MyTest._MakeRangeSpec(cfg.requestRange(), cfg.bodySize());
+
+        // Do allow "probably pointless but working" combinations like testing
+        // a cache with uncachable !dutRequestsWhole(). We do not generate
+        // them, but the tester may have valid reasons to test them.
     }
 
     // a (cfg.requestRange(), cfg.bodySize())-based gist, suitable only for
@@ -295,7 +317,7 @@ export default class MyTest extends Test {
         resource.body = new Body(RandomText("body-", Config.bodySize()), ranges);
         resource.finalize();
 
-        let missCase = new HttpTestCase(`forward a response to a range request with ${Config.responsePrefixSizeMinimum()}-byte header and ${Config.bodySize()}-byte body`);
+        let missCase = new HttpTestCase(`forward a Range request response with ${Config.responsePrefixSizeMinimum()}-byte header and ${Config.bodySize()}-byte body`);
         missCase.server().serve(resource);
         missCase.client().request.for(resource);
         missCase.client().request.addRanges(ranges);
@@ -333,6 +355,9 @@ export default class MyTest extends Test {
     }
 
     async testCaching() {
+        if (Config.cacheType() === "none")
+            return;
+
         let resource = new Resource();
         resource.makeCachable();
         resource.uri.address = AddressPool.ReserveListeningAddress();
@@ -396,7 +421,7 @@ Config.Recognize([
         // XXX: Replace with dut-cache-...
         option: "cache-type",
         type: "String",
-        enum: ["mem", "disk", "all"],
+        enum: [ 'none', 'mem', 'disk', 'all' ],
         description: "Turns on rock disk cache",
     },
     {
