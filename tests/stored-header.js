@@ -311,16 +311,39 @@ export default class MyTest extends Test {
         return true;
     }
 
-    async testRangeResponse() {
-        const ranges = this.makeRangeSpecs();
-        if (!ranges)
+    async testSimpleForwarding() {
+        if (Config.cacheType() !== 'none')
+            return; // caching is tested by testCaching() and testRangeHandling()
+
+        if (Config.requestRange() !== 'none')
+            return; // ranges are tested by testRangeHandling()
+
+        let resource = new Resource();
+        resource.uri.address = AddressPool.ReserveListeningAddress();
+        resource.body = new Body();
+        resource.finalize();
+
+        let missCase = new HttpTestCase(`forward a simple request response with ${Config.responsePrefixSizeMinimum()}-byte header and ${Config.bodySize()}-byte body`);
+        missCase.server().serve(resource);
+        missCase.client().request.for(resource);
+        missCase.addMissCheck();
+        await missCase.run();
+
+        AddressPool.ReleaseListeningAddress(resource.uri.address);
+    }
+
+    async testRangeHandling() {
+        if (Config.requestRange() === 'none')
             return;
 
         let resource = new Resource();
         resource.makeCachable();
         resource.uri.address = AddressPool.ReserveListeningAddress();
-        resource.body = new Body(RandomText("body-", Config.bodySize()), ranges);
+        resource.body = new Body();
         resource.finalize();
+
+        const ranges = this.makeRangeSpecs();
+        assert(ranges);
 
         let missCase = new HttpTestCase(`forward a Range request response with ${Config.responsePrefixSizeMinimum()}-byte header and ${Config.bodySize()}-byte body`);
         missCase.server().serve(resource);
@@ -329,7 +352,7 @@ export default class MyTest extends Test {
 
         if (Config.dutRequestsWhole()) {
             // cannot do missCase.addMissCheck() because the proxy does not
-            // forward the whole message from server to the client
+            // forward the whole server response to the client in this case
 
             missCase.server().checks.add((server) => {
                 const request = server.transaction().request;
@@ -406,7 +429,8 @@ export default class MyTest extends Test {
     }
 
     async run(/*testRun*/) {
-        await this.testRangeResponse();
+        await this.testSimpleForwarding();
+        await this.testRangeHandling();
         await this.testCaching();
     }
 }
