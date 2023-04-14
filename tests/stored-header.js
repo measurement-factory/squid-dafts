@@ -169,7 +169,11 @@ export default class MyTest extends Test {
         configGen.dropInvalidConfigurations(MyTest._CheckConfiguration);
         configGen.dropDuplicateConfigurations(MyTest._SummarizeEarlyConfiguration);
 
-        configGen.dutRequestsWhole([ false, true ]);
+        configGen.dutRequestsWhole(function *(cfg) {
+            yield false;
+            if (cfg.requestRange() !== "none")
+                yield true;
+        });
 
         configGen.cacheType(function *(cfg) {
             yield "none";
