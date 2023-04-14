@@ -210,8 +210,16 @@ export default class MyTest extends Test {
     // a (cfg.requestRange(), cfg.bodySize())-based gist, suitable only for
     // early removal of configuration duplicates based on those two settings
     static _SummarizeEarlyConfiguration(cfg) {
-        const rangeSpecs = MyTest._MakeRangeSpec(cfg.requestRange(), cfg.bodySize());
-        return `${rangeSpecs}/${cfg.bodySize()}`;
+        let usefulBodySize = cfg.bodySize();
+        const rangeSpecs = MyTest._MakeRangeSpec(cfg.requestRange(), usefulBodySize);
+        // If two body sizes are bigger than the last range end, then it is
+        // enough to test with just one of those too-large body sizes.
+        if (rangeSpecs) {
+            const lastSpec = rangeSpecs[rangeSpecs.length-1];
+            if (usefulBodySize > lastSpec[1])
+                usefulBodySize = lastSpec[1];
+        }
+        return `${rangeSpecs}/${usefulBodySize}`;
     }
 
     static _MakeRangeSpec(rangeName, bodySize) {
