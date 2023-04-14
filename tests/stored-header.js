@@ -116,14 +116,14 @@ class TestConfig
     }
 
     static Prefixes(cfg) {
-        let prefixes = [];
+        const prefixes = new Set();
         for (let b of TestConfig.DataBlocks(cfg)) {
             assert(b <= MaxBlock);
             for (let d of TestConfig.Deltas(cfg))
-                prefixes.push(TestConfig.ResponsePrefixSize(b, d));
+                prefixes.add(TestConfig.ResponsePrefixSize(b, d));
         }
-        assert(prefixes.length > 0);
-        return prefixes;
+        assert(prefixes.size > 0);
+        return Array.from(prefixes);
     }
 
     static Bodies() {
@@ -187,6 +187,7 @@ export default class MyTest extends Test {
                 yield true;
         });
 
+        // needs cfg.cacheType() and cfg.smp()
         configGen.responsePrefixSizeMinimum(function *(cfg) {
             yield *(TestConfig.Prefixes(cfg));
         });
