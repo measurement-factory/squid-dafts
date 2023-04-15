@@ -5,13 +5,16 @@
 // Tests whether an HTTP proxy parses a large stored HTTP response header
 
 import assert from "assert";
-import HttpTestCase from "../src/test/HttpCase";
-import Body from "../src/http/Body";
-import Resource from "../src/anyp/Resource";
-import * as Config from "../src/misc/Config";
+
 import * as AddressPool from "../src/misc/AddressPool";
-import Test from "../src/overlord/Test";
+import * as Config from "../src/misc/Config";
 import * as ConfigurationGenerator from "../src/test/ConfigGen";
+import * as Range from "../src/http/Range";
+import * as RangeParser from "../src/http/one/RangeParser";
+import Body from "../src/http/Body";
+import HttpTestCase from "../src/test/HttpCase";
+import Resource from "../src/anyp/Resource";
+import Test from "../src/overlord/Test";
 import { RandomText } from "../src/misc/Gadgets";
 
 /*
@@ -166,7 +169,7 @@ export default class MyTest extends Test {
 
         // check ASAP, to minimize the number of configurations to scan/drop
         // and reduce configuration summation overheads
-        configGen.dropInvalidConfigurations(MyTest._CheckConfiguration);
+        configGen.dropInvalidConfigurations(MyTest._CheckEarlyConfiguration);
         configGen.dropDuplicateConfigurations(MyTest._SummarizeEarlyConfiguration);
 
         configGen.dutRequestsWhole(function *(cfg) {
@@ -199,7 +202,7 @@ export default class MyTest extends Test {
         return configGen.generateConfigurators();
     }
 
-    static _CheckConfiguration(cfg) {
+    static _CheckEarlyConfiguration(cfg) {
         /* void */ MyTest._MakeRangeSpec(cfg.requestRange(), cfg.bodySize());
 
         // Do allow "probably pointless but working" combinations like testing
@@ -216,8 +219,8 @@ export default class MyTest extends Test {
         // enough to test with just one of those too-large body sizes.
         if (rangeSpecs) {
             const lastSpec = rangeSpecs[rangeSpecs.length-1];
-            if (usefulBodySize > lastSpec[1])
-                usefulBodySize = lastSpec[1];
+            if (usefulBodySize > lastSpec.high())
+                usefulBodySize = lastSpec.high();
         }
         return `${rangeSpecs}/${usefulBodySize}`;
     }
@@ -243,16 +246,18 @@ export default class MyTest extends Test {
             // the purpose of 'multi' is to test handling of _multiple_ specs
             if (rangeSpecs.length <= 1)
                 throw new ConfigurationGenerator.ConfigurationError(`'multi' Range needs more than ${bodySize} body bytes`);
-            return rangeSpecs;
+
+            return Range.Specs.from(rangeSpecs.map(raw => new Range.Spec(...raw)));
         }
 
         // the remaining specs are all single-range specs
         const rangeSpec = MyTest._MakeRawSingleRangeSpec(rangeName, bodySize);
         if (!MyTest._ValidRangeSpec(rangeSpec, bodySize))
             throw new ConfigurationGenerator.ConfigurationError(`'${rangeName}' Range needs more than ${bodySize} body bytes`);
-        return [ rangeSpec ];
+        return Range.Specs.from([new Range.Spec(...rangeSpec)]);
     }
 
+    // TODO: Return a valid Range.Spec or throw.
     // A single [low, high] range specification.
     // May return invalid offsets; the caller must check!
     static _MakeRawSingleRangeSpec(rangeName, bodySize) {
@@ -356,7 +361,7 @@ export default class MyTest extends Test {
         let missCase = new HttpTestCase(`forward a Range request response with ${Config.responsePrefixSizeMinimum()}-byte header and ${Config.bodySize()}-byte body`);
         missCase.server().serve(resource);
         missCase.client().request.for(resource);
-        missCase.client().request.addRanges(ranges);
+        missCase.client().request.header.add("Range", ranges.toString());
 
         if (Config.dutRequestsWhole()) {
             // cannot do missCase.addMissCheck() because the proxy does not
@@ -371,18 +376,17 @@ export default class MyTest extends Test {
 
             missCase.server().checks.add((server) => {
                 const request = server.transaction().request;
-                assert(this.arraysAreEqual(ranges, request.header.byteRanges()));
+                const requestedRanges = Range.Specs.FromRangeHeaderIfPresent(request.header);
+                assert(requestedRanges);
+                assert(requestedRanges.equal(ranges));
             });
         }
 
         missCase.client().checks.add((client) => {
             client.expectStatusCode(206);
-            const response = client.transaction().response;
-            // XXX: We cannot easily compare ranges because requested high in
-            // a "beyond" range may be higher than the high in the response:
-            // this.arraysAreEqual(ranges, response.ranges).
+            const responseParts = RangeParser.ResponseParts(client.transaction().response);
+            assert(responseParts.matchSpecs(ranges));
             // TODO: Test that the expected _content_ was received.
-            assert.strictEqual(ranges.length, response.ranges.length);
         });
 
         await missCase.run();
@@ -417,15 +421,14 @@ export default class MyTest extends Test {
         hitCase.client().request.for(resource);
         if (Config.smp())
             hitCase.client().nextHopAddress = this._workerListeningAddresses[2];
+
         if (ranges) {
-            hitCase.client().request.addRanges(ranges);
+            hitCase.client().request.header.add("Range", ranges.toString());
             hitCase.client().checks.add((client) => {
                 client.expectStatusCode(206);
-                const response = client.transaction().response;
-                // XXX: See another XXX about this commented out check.
-                // XXXX: Code duplication
-                // assert(this.arraysAreEqual(ranges, response.ranges));
-                assert.strictEqual(ranges.length, response.ranges.length);
+                const responseParts = RangeParser.ResponseParts(client.transaction().response);
+                assert(responseParts.matchSpecs(ranges));
+                // TODO: Test that the expected _content_ was received.
             });
         } else {
             hitCase.addHitCheck(missCase.server().transaction().response);
