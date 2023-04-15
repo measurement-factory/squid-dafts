@@ -305,24 +305,6 @@ export default class MyTest extends Test {
         return MyTest._MakeRangeSpec(Config.requestRange(), Config.bodySize());
     }
 
-    // whether the two arrays are equal
-    arraysAreEqual(a1, a2) {
-        const isA1 = Array.isArray(a1);
-        const isA2 = Array.isArray(a2);
-
-        if ((!isA1 && isA2) || (isA1 && !isA2))
-            return false;
-        if (!isA1)
-            return a1 === a2;
-        if (a1.length !== a2.length)
-            return false;
-        for (let i=0; i < a1.length; ++i) {
-            if (!this.arraysAreEqual(a1[i], a2[i]))
-                return false;
-        }
-        return true;
-    }
-
     async testSimpleForwarding() {
         if (Config.cacheType() !== 'none')
             return; // caching is tested by testCaching() and testRangeHandling()
