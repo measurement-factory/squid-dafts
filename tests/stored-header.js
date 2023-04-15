@@ -385,8 +385,7 @@ export default class MyTest extends Test {
         missCase.client().checks.add((client) => {
             client.expectStatusCode(206);
             const responseParts = RangeParser.ResponseParts(client.transaction().response);
-            assert(responseParts.matchSpecs(ranges));
-            // TODO: Test that the expected _content_ was received.
+            assert(responseParts.matchSpecs(ranges, resource.body.whole()));
         });
 
         await missCase.run();
@@ -427,8 +426,7 @@ export default class MyTest extends Test {
             hitCase.client().checks.add((client) => {
                 client.expectStatusCode(206);
                 const responseParts = RangeParser.ResponseParts(client.transaction().response);
-                assert(responseParts.matchSpecs(ranges));
-                // TODO: Test that the expected _content_ was received.
+                assert(responseParts.matchSpecs(ranges, resource.body.whole()));
             });
         } else {
             hitCase.addHitCheck(missCase.server().transaction().response);
