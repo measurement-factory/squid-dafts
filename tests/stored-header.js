@@ -10,7 +10,6 @@ import * as AddressPool from "../src/misc/AddressPool";
 import * as Config from "../src/misc/Config";
 import * as ConfigurationGenerator from "../src/test/ConfigGen";
 import * as Range from "../src/http/Range";
-import * as RangeParser from "../src/http/one/RangeParser";
 import Body from "../src/http/Body";
 import HttpTestCase from "../src/test/HttpCase";
 import Resource from "../src/anyp/Resource";
@@ -361,7 +360,7 @@ export default class MyTest extends Test {
         let missCase = new HttpTestCase(`forward a Range request response with ${Config.responsePrefixSizeMinimum()}-byte header and ${Config.bodySize()}-byte body`);
         missCase.server().serve(resource);
         missCase.client().request.for(resource);
-        missCase.client().request.header.add("Range", ranges.toString());
+        missCase.client().configureFor206(ranges, resource.body.whole());
 
         if (Config.dutRequestsWhole()) {
             // cannot do missCase.addMissCheck() because the proxy does not
@@ -381,13 +380,6 @@ export default class MyTest extends Test {
                 assert(requestedRanges.equal(ranges));
             });
         }
-
-        missCase.client().checks.add((client) => {
-            client.expectStatusCode(206);
-            const responseParts = RangeParser.ResponseParts(client.transaction().response);
-            const expectedParts = Range.Parts.From(ranges, resource.body.whole());
-            assert(responseParts.equal(expectedParts));
-        });
 
         await missCase.run();
 
@@ -423,13 +415,7 @@ export default class MyTest extends Test {
             hitCase.client().nextHopAddress = this._workerListeningAddresses[2];
 
         if (ranges) {
-            hitCase.client().request.header.add("Range", ranges.toString());
-            hitCase.client().checks.add((client) => {
-                client.expectStatusCode(206);
-                const responseParts = RangeParser.ResponseParts(client.transaction().response);
-                const expectedParts = Range.Parts.From(ranges, resource.body.whole());
-                assert(responseParts.equal(expectedParts));
-            });
+            hitCase.client().configureFor206(ranges, resource.body.whole());
         } else {
             hitCase.addHitCheck(missCase.server().transaction().response);
         }
