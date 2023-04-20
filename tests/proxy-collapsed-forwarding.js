@@ -6,15 +6,15 @@
 // single sent request. Also tests cache hit delivery to concurrent clients.
 
 import assert from "assert";
-import HttpTestCase from "../src/test/HttpCase";
-import Body from "../src/http/Body";
-import Resource from "../src/anyp/Resource";
-import * as Gadgets from "../src/misc/Gadgets";
-import * as Config from "../src/misc/Config";
+
 import * as AddressPool from "../src/misc/AddressPool";
-import { Must } from "../src/misc/Gadgets";
-import Test from "../src/overlord/Test";
+import * as Config from "../src/misc/Config";
+import * as Http from "../src/http/Gadgets";
 import ConfigGen from "../src/test/ConfigGen";
+import HttpTestCase from "../src/test/HttpCase";
+import Resource from "../src/anyp/Resource";
+import Test from "../src/overlord/Test";
+import { Must } from "../src/misc/Gadgets";
 
 // Compute syntax specification for the --collapsed-requests option.
 // The WorkerLimit is only needed to keep --help output reasonable.
@@ -71,6 +71,16 @@ export default class MyTest extends Test {
     static Configurators() {
         const configGen = new ConfigGen();
 
+        configGen.addGlobalConfigVariation({dutMemoryCache: [
+            false,
+            true,
+        ]});
+
+        configGen.addGlobalConfigVariation({dutDiskCache: [
+            false,
+            true,
+        ]});
+
         configGen.addGlobalConfigVariation({sendingOrder: [
             soTrueCollapsing,
             soLiveFeeding,
@@ -103,8 +113,6 @@ export default class MyTest extends Test {
     _configureDut(cfg) {
         cfg.workers(Config.Workers); // TODO: This should be the default.
         cfg.dedicatedWorkerPorts(true); // TODO: This should be the default.
-        cfg.memoryCaching(true); // TODO: Make configurable.
-        cfg.diskCaching(true); // TODO: Make configurable.
         cfg.collapsedForwarding(Config.SendingOrder === soTrueCollapsing); // TODO: Make configurable.
 
         this._workerListeningAddresses = cfg.workerListeningAddresses();
@@ -134,11 +142,26 @@ export default class MyTest extends Test {
         resource.uri.address = AddressPool.ReserveListeningAddress();
         resource.finalize();
 
+        // cache_dir rock cannot read while writing, resulting in misses (and
+        // 503 responses from Squid) in rock-only non-CF tests
+        const expect503sDueToRockLimitations =
+            !Config.dutMemoryCache() && Config.dutDiskCache() &&
+            Config.sendingOrder() !== soTrueCollapsing;
+
+        // when there is no caching at all, all clients ought to miss, and all
+        // secondary clients ought to get a 503 error response
+        const expect503sDueToAbsentCache = !this.dut.config().cachingEnabled();
+
+        const expect503s = expect503sDueToAbsentCache || expect503sDueToRockLimitations;
+
         let testCase = new HttpTestCase('one and only'); // TODO: Use a testRun-based label
         testCase.server().serve(resource);
         let missClient = testCase.client();
         missClient.request.for(resource);
         missClient.nextHopAddress = this._workerListeningAddresses[1];
+
+        if (expect503s)
+            testCase.addMissCheck(); // before we add 503-getting clients
 
         // add clients for each worker; they should all collapse on missClient
         for (let worker = 1; worker <= Config.Workers; ++worker) {
@@ -146,21 +169,51 @@ export default class MyTest extends Test {
                 hitClient.request.for(resource);
                 hitClient.nextHopAddress = this._workerListeningAddresses[worker];
                 this._blockClient(hitClient, missClient, testCase);
+                if (expect503s) {
+                    hitClient.checks.add(client => {
+                        const scode = client.transaction().response.startLine.codeInteger();
+                        switch (scode) {
+                            case 503:
+                                return; // nothing to check for a failed hit
+                            case 200: {
+                                // A lucky request may get a hit but not if
+                                // there is no cache at all. Unfortunately,
+                                // Squid does collapse requests when there is
+                                // no cache. Just warn until that is fixed.
+                                // TODO: assert(this.dut.config().cachingEnabled());
+                                if (!this.dut.config().cachingEnabled())
+                                    console.log("Warning: Ignoring that a cache-less proxy collapsed requests");
+                                Http.AssertForwardedMessage(
+                                    testCase.server().transaction().response,
+                                    client.transaction().response,
+                                    "response");
+                                return;
+                            }
+                            default: {
+                                const or200 = this.dut.config().cachingEnabled() ? " or an occasional 200" : "";
+                                throw new Error(`A secondary client expected a 503${or200}, but received a ${scode} response status code.`);
+                            }
+                        }
+                    });
+                }
             });
         }
 
         this._blockServer(testCase);
 
-        testCase.addMissCheck();
+        if (!expect503s)
+            testCase.addMissCheck(); // all clients
 
         await testCase.run();
 
-        let afterCase = new HttpTestCase('afterwards');
-        let afterClient = afterCase.client();
-        afterClient.request.for(resource);
-        afterClient.nextHopAddress = this._workerListeningAddresses[1];
-        afterCase.addHitCheck(testCase.server().transaction().response);
-        await afterCase.run();
+        if (this.dut.config().cachingEnabled()) {
+            let afterCase = new HttpTestCase('afterwards');
+            let afterClient = afterCase.client();
+            afterClient.request.for(resource);
+            afterClient.nextHopAddress = this._workerListeningAddresses[1];
+            afterCase.addHitCheck(testCase.server().transaction().response);
+            await afterCase.run();
+        }
 
         AddressPool.ReleaseListeningAddress(resource.uri.address);
     }
