@@ -149,6 +149,9 @@ export default class MyTest extends Test {
         // the remaining test cases need cache_peers that do not listen
         await this.dut.stopCachePeers();
 
+        // cache_peers that do not listen may generate ERRORs
+        this.dut.ignoreProblems(/Connection to peer.*failed/);
+
         await this.testGetThroughBadCachePeer();
         await this.testConnectThroughBadCachePeer();
     }
