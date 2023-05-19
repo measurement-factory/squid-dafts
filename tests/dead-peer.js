@@ -85,7 +85,7 @@ export default class MyTest extends Test {
     async testGetThroughCachePeerToBadOrigin() {
         const originAddress = AddressPool.ReserveListeningAddress();
 
-        let testCase = new HttpTestCase('GET through a cache_peer to a non-listening origin');
+        let testCase = new HttpTestCase(`GET through ${this._goodCachePeerDescription()} to a non-listening origin`);
         testCase.client().request.startLine.uri.address = originAddress;
         // no server to simulate an origin that is not listening
 
@@ -112,7 +112,7 @@ export default class MyTest extends Test {
     }
 
     async testConnectThroughCachePeerToBadOrigin() {
-        let testCase = new HttpTestCase('CONNECT through a cache_peer to a non-listening origin');
+        let testCase = new HttpTestCase(`CONNECT through ${this._goodCachePeerDescription()} to a non-listening origin`);
         this._configureCachePeersTalkingToBadOrigin();
 
         testCase.client().request.startLine.uri.address = {
@@ -145,7 +145,7 @@ export default class MyTest extends Test {
         resource.uri.address = originAddress;
         resource.finalize();
 
-        let testCase = new HttpTestCase('GET through a non-listening cache_peer');
+        let testCase = new HttpTestCase(`GET through ${this._badCachePeerDescription()}`);
 
         testCase.client().request.for(resource);
         CachePeer.Attract(testCase.client().request);
@@ -170,7 +170,7 @@ export default class MyTest extends Test {
     }
 
     async testConnectThroughBadCachePeer() {
-        let testCase = new HttpTestCase('CONNECT through a non-listening cache_peer');
+        let testCase = new HttpTestCase(`CONNECT through ${this._badCachePeerDescription()}`);
 
         testCase.client().request.startLine.uri.address = {
             host: Config.originAuthority().host,
@@ -203,6 +203,18 @@ export default class MyTest extends Test {
             cachePeer.response.header.add("Via",
                 `1.1 ${cachePeer.context.id} (Daft-cache_peer)`);
         });
+    }
+
+    _goodCachePeerDescription() {
+        const peers = Config.dutCachePeers();
+        assert(peers);
+        return peers > 1 ? `the first of ${peers} cache_peers` : 'a cache_peer';
+    }
+
+    _badCachePeerDescription() {
+        const peers = Config.dutCachePeers();
+        assert(peers);
+        return peers > 1 ? `${peers} non-listening cache_peers` : 'a non-listening cache_peer';
     }
 
     // expected %Sh value for cases testing non-listening cache_peers
