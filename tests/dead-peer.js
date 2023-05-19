@@ -53,6 +53,35 @@ export default class MyTest extends Test {
         AddressPool.ReleaseListeningAddress(originAddress);
     }
 
+    async testConnectDirectlyToBadOrigin() {
+        const originAddress = AddressPool.ReserveListeningAddress();
+
+        let testCase = new HttpTestCase('CONNECT directly to a non-listening origin');
+        testCase.client().request.startLine.uri.address = {
+            host: Config.originAuthority().host,
+            port: 443
+        };
+        testCase.client().request.startLine.method = 'CONNECT';
+        // no server to simulate an origin that is not listening
+
+        testCase.check(async () => {
+            testCase.expectStatusCode(503);
+            const accessRecords = await this.dut.getNewAccessRecords();
+            const accessRecord = accessRecords.single();
+            accessRecord.checkEqual('%err_code', 'ERR_CONNECT_FAIL');
+            accessRecord.checkEqual('%err_detail', 'WITH_SERVER+errno=111');
+            accessRecord.checkEqual('%Ss', 'TCP_MISS_ABORTED');
+            accessRecord.checkEqual('%>Hs', '503');
+            accessRecord.checkEqual('%rm', 'GET');
+            accessRecord.checkEqual('%Sh', 'HIER_DIRECT');
+            accessRecord.checkKnown('%<a');
+        });
+
+        await testCase.run();
+
+        AddressPool.ReleaseListeningAddress(originAddress);
+    }
+
     async testGetThroughCachePeerToBadOrigin() {
         const originAddress = AddressPool.ReserveListeningAddress();
 
@@ -189,6 +218,7 @@ export default class MyTest extends Test {
 
         if (!Config.dutCachePeers()) {
             await this.testGetDirectlyToBadOrigin();
+            await this.testConnectDirectlyToBadOrigin();
             return; // the other test cases require at least one cache_peer
         }
 
