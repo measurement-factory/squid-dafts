@@ -10,7 +10,6 @@ import * as AddressPool from "../src/misc/AddressPool";
 import * as Config from "../src/misc/Config";
 import * as CachePeer from "../src/overlord/CachePeer";
 import HttpTestCase from "../src/test/HttpCase";
-import Resource from "../src/anyp/Resource";
 import Test from "../src/overlord/Test";
 import { FlexibleConfigGen } from "../src/test/ConfigGen";
 
@@ -28,171 +27,133 @@ export default class MyTest extends Test {
         return configGen.generateConfigurators();
     }
 
+    constructor() {
+        super(...arguments);
+
+        this._lastAccessRecord = null; // cached by check() in _makeTestCase()
+    }
+
     async testGetDirectlyToBadOrigin() {
-        const originAddress = AddressPool.ReserveListeningAddress();
+        const testCase = this._makeTestCase('GET', 'directly to a non-listening origin');
 
-        let testCase = new HttpTestCase('GET directly to a non-listening origin');
-        testCase.client().request.startLine.uri.address = originAddress;
-        // no server to simulate an origin that is not listening
-
-        testCase.check(async () => {
-            testCase.expectStatusCode(503);
-            const accessRecords = await this.dut.getNewAccessRecords();
-            const accessRecord = accessRecords.single();
-            accessRecord.checkEqual('%err_code', 'ERR_CONNECT_FAIL');
-            accessRecord.checkEqual('%err_detail', 'WITH_SERVER+errno=111');
-            accessRecord.checkEqual('%Ss', 'TCP_MISS_ABORTED');
-            accessRecord.checkEqual('%>Hs', '503');
-            accessRecord.checkEqual('%rm', 'GET');
-            accessRecord.checkEqual('%Sh', 'HIER_DIRECT');
-            accessRecord.checkKnown('%<a');
+        testCase.check(() => {
+            this._lastAccessRecord.checkEqual('%err_code', 'ERR_CONNECT_FAIL');
+            this._lastAccessRecord.checkEqual('%err_detail', 'WITH_SERVER+errno=111');
+            this._lastAccessRecord.checkEqual('%Ss', 'TCP_MISS_ABORTED');
+            this._lastAccessRecord.checkEqual('%Sh', 'HIER_DIRECT');
         });
 
         await testCase.run();
 
-        AddressPool.ReleaseListeningAddress(originAddress);
+        AddressPool.ReleaseListeningAddress(testCase.client().request.startLine.uri.address);
     }
 
     async testConnectDirectlyToBadOrigin() {
-        const originAddress = AddressPool.ReserveListeningAddress();
+        const testCase = this._makeTestCase('CONNECT', 'directly to a non-listening origin');
 
-        let testCase = new HttpTestCase('CONNECT directly to a non-listening origin');
-        testCase.client().request.startLine.uri.address = {
-            host: Config.originAuthority().host,
-            port: 443
-        };
-        testCase.client().request.startLine.method = 'CONNECT';
-        // no server to simulate an origin that is not listening
-
-        testCase.check(async () => {
-            testCase.expectStatusCode(503);
-            const accessRecords = await this.dut.getNewAccessRecords();
-            const accessRecord = accessRecords.single();
-            accessRecord.checkEqual('%err_code', 'ERR_CONNECT_FAIL');
-            accessRecord.checkEqual('%err_detail', 'WITH_SERVER+errno=111');
-            accessRecord.checkEqual('%Ss', 'TCP_MISS_ABORTED');
-            accessRecord.checkEqual('%>Hs', '503');
-            accessRecord.checkEqual('%rm', 'GET');
-            accessRecord.checkEqual('%Sh', 'HIER_DIRECT');
-            accessRecord.checkKnown('%<a');
+        testCase.check(() => {
+            this._lastAccessRecord.checkEqual('%err_code', 'ERR_CONNECT_FAIL');
+            this._lastAccessRecord.checkEqual('%err_detail', 'errno=111');
+            this._lastAccessRecord.checkEqual('%Ss', 'TCP_TUNNEL');
+            this._lastAccessRecord.checkEqual('%Sh', 'HIER_DIRECT');
         });
 
         await testCase.run();
-
-        AddressPool.ReleaseListeningAddress(originAddress);
     }
 
     async testGetThroughCachePeerToBadOrigin() {
-        const originAddress = AddressPool.ReserveListeningAddress();
-
-        let testCase = new HttpTestCase(`GET through ${this._goodCachePeerDescription()} to a non-listening origin`);
-        testCase.client().request.startLine.uri.address = originAddress;
-        // no server to simulate an origin that is not listening
+        const testCase = this._makeTestCase('GET', `through ${this._goodCachePeerDescription()} to a non-listening origin`);
 
         this._configureCachePeersTalkingToBadOrigin();
 
-        CachePeer.Attract(testCase.client().request);
-
-        testCase.check(async () => {
-            testCase.expectStatusCode(503);
-            const accessRecords = await this.dut.getNewAccessRecords();
-            const accessRecord = accessRecords.single();
-            accessRecord.checkUnknown('%err_code');
-            accessRecord.checkUnknown('%err_detail');
-            accessRecord.checkEqual('%Ss', 'TCP_MISS');
-            accessRecord.checkEqual('%>Hs', '503');
-            accessRecord.checkEqual('%rm', 'GET');
-            accessRecord.checkEqual('%Sh', 'FIRSTUP_PARENT');
-            accessRecord.checkKnown('%<a');
+        testCase.check(() => {
+            this._lastAccessRecord.checkUnknown('%err_code');
+            this._lastAccessRecord.checkUnknown('%err_detail');
+            this._lastAccessRecord.checkEqual('%Ss', 'TCP_MISS');
+            this._lastAccessRecord.checkEqual('%Sh', 'FIRSTUP_PARENT');
         });
 
         await testCase.run();
 
-        AddressPool.ReleaseListeningAddress(originAddress);
+        AddressPool.ReleaseListeningAddress(testCase.client().request.startLine.uri.address);
     }
 
     async testConnectThroughCachePeerToBadOrigin() {
-        let testCase = new HttpTestCase(`CONNECT through ${this._goodCachePeerDescription()} to a non-listening origin`);
+        const testCase = this._makeTestCase('CONNECT', `through ${this._goodCachePeerDescription()} to a non-listening origin`);
+
         this._configureCachePeersTalkingToBadOrigin();
 
-        testCase.client().request.startLine.uri.address = {
-            host: Config.originAuthority().host,
-            port: 443
-        };
-        testCase.client().request.startLine.method = 'CONNECT';
-        CachePeer.Attract(testCase.client().request);
-
-        testCase.check(async () => {
-            testCase.expectStatusCode(503);
-            const accessRecords = await this.dut.getNewAccessRecords();
-            const accessRecord = accessRecords.single();
-            accessRecord.checkEqual('%err_code', 'ERR_RELAY_REMOTE');
-            accessRecord.checkUnknown('%err_detail');
-            accessRecord.checkEqual('%Ss', 'TCP_TUNNEL');
-            accessRecord.checkEqual('%>Hs', '503');
-            accessRecord.checkEqual('%rm', 'CONNECT');
-            accessRecord.checkEqual('%Sh', 'FIRSTUP_PARENT');
-            accessRecord.checkKnown('%<a');
+        testCase.check(() => {
+            this._lastAccessRecord.checkEqual('%err_code', 'ERR_RELAY_REMOTE');
+            this._lastAccessRecord.checkUnknown('%err_detail');
+            this._lastAccessRecord.checkEqual('%Ss', 'TCP_TUNNEL');
+            this._lastAccessRecord.checkEqual('%Sh', 'FIRSTUP_PARENT');
         });
 
         await testCase.run();
     }
 
     async testGetThroughBadCachePeer() {
-        const originAddress = AddressPool.ReserveListeningAddress();
+        const testCase = this._makeTestCase('GET', `through ${this._badCachePeerDescription()}`);
 
-        const resource = new Resource();
-        resource.uri.address = originAddress;
-        resource.finalize();
-
-        let testCase = new HttpTestCase(`GET through ${this._badCachePeerDescription()}`);
-
-        testCase.client().request.for(resource);
-        CachePeer.Attract(testCase.client().request);
-        testCase.server().serve(resource);
-
-        testCase.check(async () => {
-            testCase.expectStatusCode(503);
-            const accessRecords = await this.dut.getNewAccessRecords();
-            const accessRecord = accessRecords.single();
-            accessRecord.checkEqual('%err_code', 'ERR_CONNECT_FAIL');
-            accessRecord.checkEqual('%err_detail', 'WITH_SERVER+errno=111');
-            accessRecord.checkEqual('%Ss', 'TCP_MISS_ABORTED');
-            accessRecord.checkEqual('%>Hs', '503');
-            accessRecord.checkEqual('%rm', 'GET');
-            accessRecord.checkEqual('%Sh', this._expectedBadPeerHierarchyStatus());
-            accessRecord.checkKnown('%<a');
+        testCase.check(() => {
+            this._lastAccessRecord.checkEqual('%err_code', 'ERR_CONNECT_FAIL');
+            this._lastAccessRecord.checkEqual('%err_detail', 'WITH_SERVER+errno=111');
+            this._lastAccessRecord.checkEqual('%Ss', 'TCP_MISS_ABORTED');
+            this._lastAccessRecord.checkEqual('%Sh', this._expectedBadCachePeerHierarchyStatus());
         });
 
         await testCase.run();
 
-        AddressPool.ReleaseListeningAddress(originAddress);
+        AddressPool.ReleaseListeningAddress(testCase.client().request.startLine.uri.address);
     }
 
     async testConnectThroughBadCachePeer() {
-        let testCase = new HttpTestCase(`CONNECT through ${this._badCachePeerDescription()}`);
+        const testCase = this._makeTestCase('CONNECT', `through ${this._badCachePeerDescription()}`);
 
-        testCase.client().request.startLine.uri.address = {
-            host: Config.originAuthority().host,
-            port: 443
-        };
-        testCase.client().request.startLine.method = 'CONNECT';
-        CachePeer.Attract(testCase.client().request);
-
-        testCase.check(async () => {
-            testCase.expectStatusCode(503);
-            const accessRecords = await this.dut.getNewAccessRecords();
-            const accessRecord = accessRecords.single();
-            accessRecord.checkEqual('%err_code', 'ERR_CONNECT_FAIL');
-            accessRecord.checkEqual('%err_detail', 'errno=111');
-            accessRecord.checkEqual('%Ss', 'TCP_TUNNEL');
-            accessRecord.checkEqual('%>Hs', '503');
-            accessRecord.checkEqual('%rm', 'CONNECT');
-            accessRecord.checkEqual('%Sh', this._expectedBadPeerHierarchyStatus());
-            accessRecord.checkKnown('%<a');
+        testCase.check(() => {
+            this._lastAccessRecord.checkEqual('%err_code', 'ERR_CONNECT_FAIL');
+            this._lastAccessRecord.checkEqual('%err_detail', 'errno=111');
+            this._lastAccessRecord.checkEqual('%Ss', 'TCP_TUNNEL');
+            this._lastAccessRecord.checkEqual('%Sh', this._expectedBadCachePeerHierarchyStatus());
         });
 
         await testCase.run();
+    }
+
+    // HttpTestCase configuration shared among all test cases
+    _makeTestCase(requestMethod, pathDescription) {
+        const testCase = new HttpTestCase(`${requestMethod} ${pathDescription}`);
+
+        testCase.client().request.startLine.method = requestMethod;
+
+        if (requestMethod === "CONNECT") {
+            testCase.client().request.startLine.uri.address = {
+                host: Config.originAuthority().host,
+                port: 443
+            };
+        } else {
+            testCase.client().request.startLine.uri.address = AddressPool.ReserveListeningAddress();
+        }
+
+        if (Config.dutCachePeers() > 0)
+            CachePeer.Attract(testCase.client().request);
+
+        // no server, either to simulate an origin that is not listening or
+        // because no server is used when all cache_peers are not listening
+
+        testCase.check(async () => {
+            testCase.expectStatusCode(503);
+
+            const accessRecords = await this.dut.getNewAccessRecords();
+            const accessRecord = accessRecords.single();
+            accessRecord.checkEqual('%>Hs', '503');
+            accessRecord.checkEqual('%rm', requestMethod);
+            accessRecord.checkKnown('%<a');
+            this._lastAccessRecord = accessRecord;
+        });
+
+        return testCase;
     }
 
     // simulate what a cache_peer does when the origin is not listening
@@ -218,7 +179,7 @@ export default class MyTest extends Test {
     }
 
     // expected %Sh value for cases testing non-listening cache_peers
-    _expectedBadPeerHierarchyStatus() {
+    _expectedBadCachePeerHierarchyStatus() {
         const peers = Config.dutCachePeers();
         assert(peers);
         return peers > 1 ? 'ANY_OLD_PARENT' : 'FIRSTUP_PARENT';
