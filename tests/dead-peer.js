@@ -6,7 +6,6 @@
 
 import assert from "assert";
 
-import * as AddressPool from "../src/misc/AddressPool";
 import * as Config from "../src/misc/Config";
 import * as CachePeer from "../src/overlord/CachePeer";
 import HttpTestCase from "../src/test/HttpCase";
@@ -44,8 +43,6 @@ export default class MyTest extends Test {
         });
 
         await testCase.run();
-
-        AddressPool.ReleaseListeningAddress(testCase.client().request.startLine.uri.address);
     }
 
     async testConnectDirectlyToBadOrigin() {
@@ -74,8 +71,6 @@ export default class MyTest extends Test {
         });
 
         await testCase.run();
-
-        AddressPool.ReleaseListeningAddress(testCase.client().request.startLine.uri.address);
     }
 
     async testConnectThroughCachePeerToBadOrigin() {
@@ -104,8 +99,6 @@ export default class MyTest extends Test {
         });
 
         await testCase.run();
-
-        AddressPool.ReleaseListeningAddress(testCase.client().request.startLine.uri.address);
     }
 
     async testConnectThroughBadCachePeer() {
@@ -126,15 +119,11 @@ export default class MyTest extends Test {
         const testCase = new HttpTestCase(`${requestMethod} ${pathDescription}`);
 
         testCase.client().request.startLine.method = requestMethod;
-
-        if (requestMethod === "CONNECT") {
-            testCase.client().request.startLine.uri.address = {
-                host: Config.originAuthority().host,
-                port: 443
-            };
-        } else {
-            testCase.client().request.startLine.uri.address = AddressPool.ReserveListeningAddress();
-        }
+        testCase.client().request.startLine.uri.address = {
+            host: Config.originAuthority().host,
+            // use default (privileged) ports because we use no origin server
+            port: (requestMethod === "CONNECT" ? 443 : 80),
+        };
 
         if (Config.dutCachePeers() > 0)
             CachePeer.Attract(testCase.client().request);
