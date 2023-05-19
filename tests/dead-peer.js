@@ -2,7 +2,8 @@
 // Copyright (C) The Measurement Factory.
 // http://www.measurement-factory.com/
 
-// Checks handling of transactions that fail due to non-listening peers.
+// Checks handling of transactions that fail due to non-listening peers,
+// including origin servers and cache_peers.
 
 import assert from "assert";
 
@@ -193,7 +194,6 @@ export default class MyTest extends Test {
 
         // the remaining test cases need cache_peers that do not listen
         await this.dut.stopCachePeers();
-
 
         await this.testGetThroughBadCachePeer();
         await this.testConnectThroughBadCachePeer();
