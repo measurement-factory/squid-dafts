@@ -199,7 +199,8 @@ export default class MyTest extends Test {
             });
         }
 
-        this._blockServer(testCase);
+        // TODO: These parameters should probably become MyTest data members.
+        this._blockServer(expect503s, resource, testCase);
 
         if (!expect503s)
             testCase.addMissCheck(); // all clients
@@ -244,10 +245,13 @@ export default class MyTest extends Test {
         assert(false); // not reached
     }
 
-    _blockServer(testCase) {
+    _blockServer(expect503s, resource, testCase) {
         if (Config.SendingOrder === soTrueCollapsing) {
+            const event = expect503s ?
+                testCase.clientsSentEverything() :
+                this.dut.finishStagingRequests(resource.uri.path, testCase.clients().length);
             testCase.server().transaction().blockSendingUntil(
-                testCase.clientsSentEverything(),
+                event,
                 "wait for all clients to collapse");
             return;
         }
