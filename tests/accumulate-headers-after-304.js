@@ -27,22 +27,13 @@ Config.Recognize([
         default: "false",
         description: "In this mode MISS, UPDATE and HIT requests will go to different proxy SMP workers",
     },
-    {
-        option: "dut-cache",
-        type: "String",
-        enum: [ 'mem', 'disk', 'all' ],
-        description: "Turns on rock disk cache",
-    },
 ]);
 
 export default class MyTest extends Test {
 
     _configureDut(cfg) {
-        const memCache = Config.dutCache() === 'mem' || Config.dutCache() === 'all';
-        const diskCache = Config.dutCache() === 'disk' || Config.dutCache() === 'all';
-        cfg.memoryCaching(memCache || !Config.smp()); // always turn on memory cache in non-smp mode
-        cfg.diskCaching(diskCache && Config.smp()); // turn on rock only in smp mode
-
+        assert(!Config.dutDiskCache() || Config.smp());
+        assert(Config.dutMemoryCache() || Config.dutDiskCache());
         if (Config.smp()) {
             cfg.workers(4);
             cfg.dedicatedWorkerPorts(true);
@@ -58,19 +49,24 @@ export default class MyTest extends Test {
             yield true;
         });
 
-        configGen.dutCache(function *(cfg) {
-            yield "mem";
+        configGen.dutDiskCache(function *(cfg) {
+            yield false;
             if (cfg.smp()) {
-                yield "disk";
-                yield "all";
+                yield true;
+            }
+        });
+
+        configGen.dutMemoryCache(function *(cfg) {
+            yield true;
+            if (cfg.dutDiskCache()) {
+                yield false;
             }
         });
         
         return configGen.generateConfigurators();
     }
 
-    async testOne() {
-
+    async run(/*testRun*/) {
         let resource = new Resource();
         resource.uri.address = AddressPool.ReserveListeningAddress();
         resource.modifiedAt(FuzzyTime.DistantPast());
@@ -89,7 +85,7 @@ export default class MyTest extends Test {
         
         {
             const prefixSize = MaxPrefixSize - updateHeaderLength;
-            let testCase = new HttpTestCase(`forward a cachable response with a prefix size less than the maximum allowed prefix size ${prefixSize}<${MaxPrefixSize}`);
+            let testCase = new HttpTestCase(`forward a cachable response with a prefix size less than the maximum allowed ${prefixSize}<${MaxPrefixSize}`);
             testCase.client().request.for(resource);
             if (Config.smp())
                 testCase.client().nextHopAddress = this._workerListeningAddresses[1];
@@ -113,7 +109,7 @@ export default class MyTest extends Test {
 
         let updatingResponse = null;
         {
-            let testCase = new HttpTestCase(`get a 304 that makes cached header size equal to the maximum allowed prefix size: ${MaxPrefixSize}`);
+            let testCase = new HttpTestCase(`attempt to increase the cached prefix size up to the maximum allowed: ${MaxPrefixSize}`);
 
             resource.modifyNow();
             resource.expireAt(FuzzyTime.DistantFuture());
@@ -131,12 +127,13 @@ export default class MyTest extends Test {
                 updatingResponse = testCase.server().transaction().response;
                 const receivedResponse = testCase.client().transaction().response;
                 assert(receivedResponse.startLine.codeInteger() === 200);
+                assert.equal(receivedResponse.header.value(hitCheck.name), hitCheck.value, "preserved originally cached header field");
             });
             await testCase.run();
         }
 
         {
-            let testCase = new HttpTestCase('hit updated headers');
+            let testCase = new HttpTestCase(`hit the cached entry with the maximum allowed prefix: ${MaxPrefixSize} `);
             testCase.client().request.for(resource);
             if (Config.smp())
                 testCase.client().nextHopAddress = this._workerListeningAddresses[3];
@@ -146,13 +143,12 @@ export default class MyTest extends Test {
                 assert.equal(code, 200);
                 assert.equal(updatingResponse.id(), updatedResponse.id(), "updated X-Daft-Response-ID");
                 assert.equal(updatedResponse.header.values("Last-Modified"), resource.lastModificationTime.toUTCString(), "updated Last-Modified");
-                assert.equal(updatedResponse.header.value(hitCheck.name), hitCheck.value, "preserved originally cached header field");
             });
             await testCase.run();
         }
 
         {
-            let testCase = new HttpTestCase(`get a 304 that makes cached header size greater than the maximum allowed prefix size: ${MaxPrefixSize}+1`);
+            let testCase = new HttpTestCase(`attempt to make the cached prefix size greater than the maximum allowed: ${MaxPrefixSize}+1`);
 
             resource.modifyNow();
             resource.expireAt(FuzzyTime.DistantFuture());
@@ -174,23 +170,7 @@ export default class MyTest extends Test {
             await testCase.run();
         }
 
-        {
-            let testCase = new HttpTestCase('check that the proxy did not cache the entry with too big prefix');
-            testCase.client().request.for(resource);
-            if (Config.smp())
-                testCase.client().nextHopAddress = this._workerListeningAddresses[3];
-            testCase.check(() => {
-                const updatedResponse = testCase.client().transaction().response;
-                assert(updatedResponse.startLine.codeInteger() >= 500);
-            });
-            await testCase.run();
-        }
-
         AddressPool.ReleaseListeningAddress(resource.uri.address);
-    }
-
-    async run(/*testRun*/) {
-        await this.testOne();
     }
 }
 
