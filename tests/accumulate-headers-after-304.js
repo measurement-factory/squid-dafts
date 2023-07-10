@@ -18,7 +18,7 @@ import assert from "assert";
 import Test from "../src/overlord/Test";
 
 // TODO: make configurable
-const MaxHeaderSize = 65536;
+const MaxPrefixSize = 65536;
 
 Config.Recognize([
     {
@@ -69,13 +69,12 @@ export default class MyTest extends Test {
         return configGen.generateConfigurators();
     }
 
-    async testOne(headerSize, updateSuccess) {
+    async testOne() {
 
         let resource = new Resource();
         resource.uri.address = AddressPool.ReserveListeningAddress();
         resource.modifiedAt(FuzzyTime.DistantPast());
         resource.expireAt(FuzzyTime.Soon());
-        resource.body = new Body("z".repeat(64));
         resource.finalize();
 
         // This header appears in the initially cached response.
@@ -83,23 +82,19 @@ export default class MyTest extends Test {
         // This header must upppear in the updatedResponse.
         const hitCheck = new Field("X-Daft-Hit-Check", Gadgets.UniqueId("check"));
 
-        let updateField = new Field("X-Update-Header", Gadgets.UniqueId("update"));
+        const updateHeaderName = "X-Update-Header";
+        let updateField = new Field(updateHeaderName, 'x');
         updateField.finalize();
         const updateHeaderLength = updateField.raw().length;
         
         {
-            let testCase = new HttpTestCase('forward a cachable response');
+            const prefixSize = MaxPrefixSize - updateHeaderLength;
+            let testCase = new HttpTestCase(`forward a cachable response with a prefix size less than the maximum allowed prefix size ${prefixSize}<${MaxPrefixSize}`);
             testCase.client().request.for(resource);
             if (Config.smp())
                 testCase.client().nextHopAddress = this._workerListeningAddresses[1];
             testCase.server().serve(resource);
-            let startLine = testCase.server().response.startLine;
-            startLine.finalize(); // 200 by default
-            const headerSeparator = 2; // "\r\n"
-            const finalPrefixSize = headerSize + startLine.raw().length + 2; // will become ofter receiving 304 updating response
-            const initialPrefixSize = finalPrefixSize - updateHeaderLength;
-            assert(initialPrefixSize <= MaxHeaderSize);
-            testCase.server().response.enforceMinimumPrefixSize(initialPrefixSize);
+            testCase.server().response.enforceMinimumPrefixSize(prefixSize);
             testCase.server().response.header.add(hitCheck);
             await testCase.run();
         }
@@ -118,7 +113,7 @@ export default class MyTest extends Test {
 
         let updatingResponse = null;
         {
-            let testCase = new HttpTestCase(`get a 304 that increases the cached header size on ${updateHeaderLength}`);
+            let testCase = new HttpTestCase(`get a 304 that makes cached header size equal to the maximum allowed prefix size: ${MaxPrefixSize}`);
 
             resource.modifyNow();
             resource.expireAt(FuzzyTime.DistantFuture());
@@ -133,15 +128,9 @@ export default class MyTest extends Test {
             testCase.server().response.startLine.code(304);
             testCase.server().serve(resource);
             testCase.check(() => {
-                const receivedResponse = testCase.client().transaction().response;
-                const code = receivedResponse.startLine.codeInteger();
                 updatingResponse = testCase.server().transaction().response;
-                if (headerSize <= MaxHeaderSize) {
-                    assert.equal(updatingResponse.id(), receivedResponse.id(), "relayed X-Daft-Response-ID");
-                    assert.equal(code, 200);
-                } else {
-                    assert(code>=500);
-                }
+                const receivedResponse = testCase.client().transaction().response;
+                assert(receivedResponse.startLine.codeInteger() === 200);
             });
             await testCase.run();
         }
@@ -154,14 +143,45 @@ export default class MyTest extends Test {
             testCase.check(() => {
                 let updatedResponse = testCase.client().transaction().response;
                 const code = updatedResponse.startLine.codeInteger();
-                if (headerSize <= MaxHeaderSize) {
-                    assert.equal(code, 200);
-                    assert.equal(updatingResponse.id(), updatedResponse.id(), "updated X-Daft-Response-ID");
-                    assert.equal(updatedResponse.header.values("Last-Modified"), resource.lastModificationTime.toUTCString(), "updated Last-Modified");
-                    assert.equal(updatedResponse.header.value(hitCheck.name), hitCheck.value, "preserved originally cached header field");
-                } else {
-                    assert(code>=500);
-                }
+                assert.equal(code, 200);
+                assert.equal(updatingResponse.id(), updatedResponse.id(), "updated X-Daft-Response-ID");
+                assert.equal(updatedResponse.header.values("Last-Modified"), resource.lastModificationTime.toUTCString(), "updated Last-Modified");
+                assert.equal(updatedResponse.header.value(hitCheck.name), hitCheck.value, "preserved originally cached header field");
+            });
+            await testCase.run();
+        }
+
+        {
+            let testCase = new HttpTestCase(`get a 304 that makes cached header size greater than the maximum allowed prefix size: ${MaxPrefixSize}+1`);
+
+            resource.modifyNow();
+            resource.expireAt(FuzzyTime.DistantFuture());
+
+            testCase.client().request.for(resource);
+            testCase.client().request.conditions({ ims: resource.modifiedSince() });
+            testCase.client().request.header.add("Cache-Control", "max-age=0");
+            if (Config.smp())
+                testCase.client().nextHopAddress = this._workerListeningAddresses[2];
+
+            testCase.server().response.header.addOverwrite(updateHeaderName, "xy");
+
+            testCase.server().response.startLine.code(304);
+            testCase.server().serve(resource);
+            testCase.check(() => {
+                const receivedResponse = testCase.client().transaction().response;
+                assert(receivedResponse.startLine.codeInteger() >= 500);
+            });
+            await testCase.run();
+        }
+
+        {
+            let testCase = new HttpTestCase('check that the proxy did not cache the entry with too big prefix');
+            testCase.client().request.for(resource);
+            if (Config.smp())
+                testCase.client().nextHopAddress = this._workerListeningAddresses[3];
+            testCase.check(() => {
+                const updatedResponse = testCase.client().transaction().response;
+                assert(updatedResponse.startLine.codeInteger() >= 500);
             });
             await testCase.run();
         }
@@ -170,9 +190,7 @@ export default class MyTest extends Test {
     }
 
     async run(/*testRun*/) {
-        // TODO: test some other sizes?
-        await this.testOne(MaxHeaderSize);
-        await this.testOne(MaxHeaderSize+1);
+        await this.testOne();
     }
 }
 
