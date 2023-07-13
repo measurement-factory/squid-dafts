@@ -162,12 +162,20 @@ export default class MyTest extends Test {
             testCase.server().response.header.addOverwrite(updateHeaderName, "xy");
 
             testCase.server().response.startLine.code(304);
+            testCase.server().keepListening('always');
             testCase.server().serve(resource);
             testCase.check(() => {
                 const receivedResponse = testCase.client().transaction().response;
-                assert(receivedResponse.startLine.codeInteger() >= 500);
+                assert(receivedResponse.startLine.codeInteger() === 200);
+                // allow the server argent to stop and the transaction to finish
+                testCase.server().keepListening('never');
             });
-            await testCase.run();
+
+            let started = testCase.run();
+            await testCase.server().transaction().sentEverything();
+            // handle proxy's retry attempt (after discovering that it's got too large prefix)
+            testCase.server().resetTransaction();
+            await started;
         }
 
         AddressPool.ReleaseListeningAddress(resource.uri.address);
