@@ -17,8 +17,8 @@ import * as Config from "../src/misc/Config";
 import assert from "assert";
 import Test from "../src/overlord/Test";
 
-// TODO: make configurable
-const MaxPrefixSize = 65536;
+const DefaultPrefixSizeKB = 64;
+const DefaultPrefixSize = DefaultPrefixSizeKB*1024;
 
 Config.Recognize([
     {
@@ -27,6 +27,13 @@ Config.Recognize([
         default: "false",
         description: "In this mode MISS, UPDATE and HIT requests will go to different proxy SMP workers",
     },
+    {
+        option: "max-prefix-size",
+        type: "Number",
+        default: DefaultPrefixSize.toString(),
+        description: "maximum message body size (KB)",
+    },
+
 ]);
 
 export default class MyTest extends Test {
@@ -39,6 +46,7 @@ export default class MyTest extends Test {
             cfg.dedicatedWorkerPorts(true);
             this._workerListeningAddresses = cfg.workerListeningAddresses();
         } 
+        cfg.custom(`reply_header_max_size ${Config.MaxPrefixSize} KB`);
     }
 
     static Configurators() {
@@ -62,9 +70,17 @@ export default class MyTest extends Test {
                 yield false;
             }
         });
+
+        configGen.maxPrefixSize(function *(cfg) {
+            yield 8;
+            yield 32;
+            yield 64;
+        });
         
         return configGen.generateConfigurators();
     }
+
+    maxPrefixSize() { return Config.MaxPrefixSize * 1024; }
 
     async run(/*testRun*/) {
         let resource = new Resource();
@@ -84,14 +100,17 @@ export default class MyTest extends Test {
         const updateHeaderLength = updateField.raw().length;
         
         {
-            const prefixSize = MaxPrefixSize - updateHeaderLength;
-            let testCase = new HttpTestCase(`forward a cachable response with a prefix size less than the maximum allowed ${prefixSize}<${MaxPrefixSize}`);
+            const prefixSize = this.maxPrefixSize() - updateHeaderLength;
+            let testCase = new HttpTestCase(`forward a cachable response with a prefix size less than the maximum allowed ${prefixSize}<${this.maxPrefixSize()}`);
             testCase.client().request.for(resource);
             if (Config.smp())
                 testCase.client().nextHopAddress = this._workerListeningAddresses[1];
             testCase.server().serve(resource);
             testCase.server().response.enforceMinimumPrefixSize(prefixSize);
             testCase.server().response.header.add(hitCheck);
+            testCase.client().checks.add((client) => {
+                client.expectStatusCode(200);
+            });
             await testCase.run();
         }
 
@@ -109,7 +128,7 @@ export default class MyTest extends Test {
 
         let updatingResponse = null;
         {
-            let testCase = new HttpTestCase(`attempt to increase the cached prefix size up to the maximum allowed: ${MaxPrefixSize}`);
+            let testCase = new HttpTestCase(`attempt to increase the cached prefix size up to the maximum allowed: ${this.maxPrefixSize()}`);
 
             resource.modifyNow();
             resource.expireAt(FuzzyTime.DistantFuture());
@@ -133,7 +152,7 @@ export default class MyTest extends Test {
         }
 
         {
-            let testCase = new HttpTestCase(`hit the cached entry with the maximum allowed prefix: ${MaxPrefixSize} `);
+            let testCase = new HttpTestCase(`hit the cached entry with the maximum allowed prefix: ${this.maxPrefixSize()} `);
             testCase.client().request.for(resource);
             if (Config.smp())
                 testCase.client().nextHopAddress = this._workerListeningAddresses[3];
@@ -148,7 +167,7 @@ export default class MyTest extends Test {
         }
 
         {
-            let testCase = new HttpTestCase(`attempt to make the cached prefix size greater than the maximum allowed: ${MaxPrefixSize}+1`);
+            let testCase = new HttpTestCase(`attempt to make the cached prefix size greater than the maximum allowed: ${this.maxPrefixSize()}+1`);
 
             resource.modifyNow();
             resource.expireAt(FuzzyTime.DistantFuture());
