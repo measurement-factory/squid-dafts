@@ -11,6 +11,7 @@ import Body from "../src/http/Body";
 import Resource from "../src/anyp/Resource";
 import * as ConfigurationGenerator from "../src/test/ConfigGen";
 import * as AddressPool from "../src/misc/AddressPool";
+import * as Http from "../src/http/Gadgets";
 import * as FuzzyTime from "../src/misc/FuzzyTime";
 import * as Gadgets from "../src/misc/Gadgets";
 import * as Config from "../src/misc/Config";
@@ -75,6 +76,8 @@ export default class MyTest extends Test {
             yield 8;
             yield 32;
             yield 64;
+            yield 128;
+            yield 2048;
         });
         
         return configGen.generateConfigurators();
@@ -92,9 +95,9 @@ export default class MyTest extends Test {
         // This header appears in the initially cached response.
         // This header does not appear in the updatingResponse.
         // This header must upppear in the updatedResponse.
-        const hitCheck = new Field("X-Daft-Hit-Check", Gadgets.UniqueId("check"));
+        const hitCheck = new Field(Http.DaftFieldName("Hit-Check"), Gadgets.UniqueId("check"));
 
-        const updateHeaderName = "X-Update-Header";
+        const updateHeaderName = Http.DaftFieldName("Update");
         let updateField = new Field(updateHeaderName, 'x');
         updateField.finalize();
         const updateHeaderLength = updateField.raw().length;
@@ -186,6 +189,7 @@ export default class MyTest extends Test {
             testCase.check(() => {
                 const receivedResponse = testCase.client().transaction().response;
                 assert(receivedResponse.startLine.codeInteger() === 200);
+                assert(!receivedResponse.header.has(hitCheck.name));
                 // allow the server argent to stop and the transaction to finish
                 testCase.server().keepListening('never');
             });
