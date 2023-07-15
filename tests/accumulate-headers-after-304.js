@@ -152,6 +152,11 @@ export default class MyTest extends Test {
                 assert.equal(receivedResponse.header.value(hitCheck.name), hitCheck.value, "preserved originally cached header field");
             });
             await testCase.run();
+
+            // need some time to update the cached entry for disk-only SMP configurations
+            // without it the initially cached entry may be returned
+            // TODO: a better way to achieve this?
+            await Gadgets.SleepMs(1000);
         }
 
         {
