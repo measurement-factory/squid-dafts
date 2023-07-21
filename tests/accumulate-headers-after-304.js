@@ -2,20 +2,21 @@
 // Copyright (C) The Measurement Factory.
 // http://www.measurement-factory.com/
 
-// Tests whether an HTTP proxy does not allow to increase an HTTP response header
-// via 304 responses more than the specified limit.
+// Tests whether Squid grows cached HTTP response header beyond
+// reply_header_max_size when updating cached headers using 304 responses.
+// See also: tests/proxy-update-headers-after-304.js
 
-import HttpTestCase from "../src/test/HttpCase";
-import Field from "../src/http/Field";
-import Body from "../src/http/Body";
-import Resource from "../src/anyp/Resource";
-import * as ConfigurationGenerator from "../src/test/ConfigGen";
 import * as AddressPool from "../src/misc/AddressPool";
-import * as Http from "../src/http/Gadgets";
+import * as Config from "../src/misc/Config";
+import * as ConfigurationGenerator from "../src/test/ConfigGen";
 import * as FuzzyTime from "../src/misc/FuzzyTime";
 import * as Gadgets from "../src/misc/Gadgets";
-import * as Config from "../src/misc/Config";
+import * as Http from "../src/http/Gadgets";
 import assert from "assert";
+import Body from "../src/http/Body";
+import Field from "../src/http/Field";
+import HttpTestCase from "../src/test/HttpCase";
+import Resource from "../src/anyp/Resource";
 import Test from "../src/overlord/Test";
 
 const DefaultPrefixSizeKB = 64;
@@ -36,7 +37,7 @@ Config.Recognize([
         option: "max-prefix-size",
         type: "Number",
         default: DefaultPrefixSize.toString(),
-        description: "maximum message body size (KB)",
+        description: "squid.conf::reply_header_max_size value (KB)",
     },
 ]);
 
@@ -89,7 +90,7 @@ export default class MyTest extends Test {
     maxPrefixSize() { return Config.maxPrefixSize() * 1024; }
 
     async run(/*testRun*/) {
-        let resource = new Resource();
+        const resource = new Resource();
         resource.uri.address = AddressPool.ReserveListeningAddress();
         resource.modifiedAt(FuzzyTime.DistantPast());
         resource.expireAt(FuzzyTime.Soon());
@@ -101,13 +102,13 @@ export default class MyTest extends Test {
         const hitCheck = new Field(Http.DaftFieldName("Hit-Check"), Gadgets.UniqueId("check"));
 
         const updateHeaderName = Http.DaftFieldName("Update");
-        let updateField = new Field(updateHeaderName, 'x');
+        const updateField = new Field(updateHeaderName, 'x');
         updateField.finalize();
         const updateHeaderLength = updateField.raw().length;
 
         {
             const prefixSize = this.maxPrefixSize() - updateHeaderLength;
-            let testCase = new HttpTestCase(`forward a cachable response with a prefix size less than the maximum allowed ${prefixSize}<${this.maxPrefixSize()}`);
+            const testCase = new HttpTestCase(`cache ${prefixSize}-byte response prefix which is smaller than the ${this.maxPrefixSize()}-byte maximum`);
             testCase.client().request.for(resource);
             testCase.client().nextHopAddress = this._workerListeningAddressFor(1);
             testCase.server().serve(resource);
@@ -121,7 +122,7 @@ export default class MyTest extends Test {
         }
 
         {
-            let testCase = new HttpTestCase('respond with a 304 hit');
+            const testCase = new HttpTestCase('verify that we cached the response with a smaller-than-allowed prefix');
             testCase.client().request.for(resource);
             testCase.client().nextHopAddress = this._workerListeningAddressFor(2);
             testCase.client().request.conditions({ ims: resource.notModifiedSince() });
@@ -133,7 +134,7 @@ export default class MyTest extends Test {
 
         let updatingResponse = null;
         {
-            let testCase = new HttpTestCase(`attempt to increase the cached prefix size up to the maximum allowed: ${this.maxPrefixSize()}`);
+            const testCase = new HttpTestCase(`grow cached prefix size to match the ${this.maxPrefixSize()}-byte maximum`);
 
             resource.modifyNow();
             resource.expireAt(FuzzyTime.DistantFuture());
@@ -154,18 +155,18 @@ export default class MyTest extends Test {
             });
 
             await testCase.run();
-            // XXX: Does not work when updating headers
+            // XXX: this.dut.finishCaching() does not see prefix-updating disk I/O
             // await this.dut.finishCaching();
         }
 
         {
-            let testCase = new HttpTestCase(`hit the cached entry with the maximum allowed prefix: ${this.maxPrefixSize()} `);
+            const testCase = new HttpTestCase('verify that we cached the response with a maximum-allowed prefix');
             testCase.client().request.for(resource);
-            // TODO: should be step '4'. Temporarily set as the previous step to overcome
-            // the 'dut.finishCaching()' problem for updates
+            // TODO: This is step 4, not 3, but we use the previous step ID to
+            // work around dut.finishCaching() inability to see disk updates.
             testCase.client().nextHopAddress = this._workerListeningAddressFor(3);
             testCase.check(() => {
-                let updatedResponse = testCase.client().transaction().response;
+                const updatedResponse = testCase.client().transaction().response;
                 const code = updatedResponse.startLine.codeInteger();
                 assert.equal(code, 200);
                 assert.equal(updatingResponse.id(), updatedResponse.id(), "updated X-Daft-Response-ID");
@@ -175,7 +176,7 @@ export default class MyTest extends Test {
         }
 
         {
-            let testCase = new HttpTestCase(`attempt to make the cached prefix size greater than the maximum allowed: ${this.maxPrefixSize()}+1`);
+            const testCase = new HttpTestCase(`push prefix size beyond the ${this.maxPrefixSize()}-byte maximum`);
 
             resource.modifyNow();
             resource.expireAt(FuzzyTime.DistantFuture());
@@ -200,7 +201,7 @@ export default class MyTest extends Test {
 
             this.dut.ignoreProblems(/Failed to update.*exceed/);
 
-            let started = testCase.run();
+            const started = testCase.run();
             await testCase.server().transaction().sentEverything();
             // handle proxy's retry attempt (after discovering that it's got too large prefix)
             testCase.server().resetTransaction();
