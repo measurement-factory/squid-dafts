@@ -229,7 +229,6 @@ export default class MyTest extends Test {
         const offset = 1 + (workerId - 1);
         assert(offset >= 0);
         assert(offset < this._workerListeningAddresses.length);
-        console.log("Adress: === " + this._workerListeningAddresses[offset].port + " " + offset + " " + this._workerListeningAddresses.length);
         return this._workerListeningAddresses[offset];
     }
 }
