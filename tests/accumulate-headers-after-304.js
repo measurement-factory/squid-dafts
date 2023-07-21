@@ -19,9 +19,6 @@ import HttpTestCase from "../src/test/HttpCase";
 import Resource from "../src/anyp/Resource";
 import Test from "../src/overlord/Test";
 
-const DefaultPrefixSizeKB = 64;
-const DefaultPrefixSize = DefaultPrefixSizeKB*1024;
-
 Config.Recognize([
     {
         option: "workers",
@@ -36,7 +33,6 @@ Config.Recognize([
     {
         option: "max-prefix-size",
         type: "Number",
-        default: DefaultPrefixSize.toString(),
         description: "squid.conf::reply_header_max_size value (KB)",
     },
 ]);
