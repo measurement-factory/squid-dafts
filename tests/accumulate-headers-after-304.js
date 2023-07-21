@@ -31,9 +31,9 @@ Config.Recognize([
         description: "send all test case requests to the same Squid worker process",
     },
     {
-        option: "max-prefix-size",
+        option: "reply-header-max-size",
         type: "Number",
-        description: "squid.conf::reply_header_max_size value (KB)",
+        description: "squid.conf::reply_header_max_size value (bytes)",
     },
 ]);
 
@@ -44,7 +44,7 @@ export default class MyTest extends Test {
         cfg.workers(Config.workers());
         cfg.dedicatedWorkerPorts(Config.workers() > 1);
         this._workerListeningAddresses = cfg.workerListeningAddresses();
-        cfg.custom(`reply_header_max_size ${Config.maxPrefixSize()} KB`);
+        cfg.custom(`reply_header_max_size ${Config.replyHeaderMaxSize()} bytes`);
     }
 
     static Configurators() {
@@ -72,18 +72,19 @@ export default class MyTest extends Test {
             yield true;
         });
 
-        configGen.maxPrefixSize(function *(cfg) {
-            yield 8;
-            yield 32;
-            yield 64;
-            yield 128;
-            yield 2048;
+        configGen.replyHeaderMaxSize(function *(cfg) {
+            yield 8*1024;
+            yield 32*1024;
+            yield 64*1024;
+            yield 128*1024;
+            yield 2048*1024;
         });
 
         return configGen.generateConfigurators();
     }
 
-    maxPrefixSize() { return Config.maxPrefixSize() * 1024; }
+    // reply_header_max_size includes response status-line size
+    prefixSizeMax() { return Config.replyHeaderMaxSize(); }
 
     async run(/*testRun*/) {
         const resource = new Resource();
@@ -103,8 +104,8 @@ export default class MyTest extends Test {
         const updateHeaderLength = updateField.raw().length;
 
         {
-            const prefixSize = this.maxPrefixSize() - updateHeaderLength;
-            const testCase = new HttpTestCase(`cache ${prefixSize}-byte response prefix which is smaller than the ${this.maxPrefixSize()}-byte maximum`);
+            const prefixSize = this.prefixSizeMax() - updateHeaderLength;
+            const testCase = new HttpTestCase(`cache ${prefixSize}-byte response prefix which is smaller than the ${this.prefixSizeMax()}-byte maximum`);
             testCase.client().request.for(resource);
             testCase.client().nextHopAddress = this._workerListeningAddressFor(1);
             testCase.server().serve(resource);
@@ -130,7 +131,7 @@ export default class MyTest extends Test {
 
         let updatingResponse = null;
         {
-            const testCase = new HttpTestCase(`grow cached prefix size to match the ${this.maxPrefixSize()}-byte maximum`);
+            const testCase = new HttpTestCase(`grow cached prefix size to match the ${this.prefixSizeMax()}-byte maximum`);
 
             resource.modifyNow();
             resource.expireAt(FuzzyTime.DistantFuture());
@@ -172,7 +173,7 @@ export default class MyTest extends Test {
         }
 
         {
-            const testCase = new HttpTestCase(`push prefix size beyond the ${this.maxPrefixSize()}-byte maximum`);
+            const testCase = new HttpTestCase(`push prefix size beyond the ${this.prefixSizeMax()}-byte maximum`);
 
             resource.modifyNow();
             resource.expireAt(FuzzyTime.DistantFuture());
