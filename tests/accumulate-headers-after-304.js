@@ -117,6 +117,7 @@ export default class MyTest extends Test {
                 client.expectStatusCode(200);
             });
             await testCase.run();
+            await this.dut.finishCaching();
         }
 
         {
@@ -128,7 +129,6 @@ export default class MyTest extends Test {
                 client.expectStatusCode(304);
             });
             await testCase.run();
-            await this.dut.finishCaching();
         }
 
         let updatingResponse = null;
