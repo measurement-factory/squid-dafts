@@ -198,6 +198,8 @@ export default class MyTest extends Test {
                 testCase.server().keepListening('never');
             });
 
+            this.dut.ignoreProblems(/Failed to update.*exceed/);
+
             let started = testCase.run();
             await testCase.server().transaction().sentEverything();
             // handle proxy's retry attempt (after discovering that it's got too large prefix)
