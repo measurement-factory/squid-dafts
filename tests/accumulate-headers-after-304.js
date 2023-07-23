@@ -99,14 +99,18 @@ export default class MyTest extends Test {
         {
             const prefixSize = this.prefixSizeMax() - updateField.raw().length;
             const testCase = new HttpTestCase(`cache ${prefixSize}-byte response prefix which is smaller than the ${this.prefixSizeMax()}-byte maximum`);
+
             testCase.client().request.for(resource);
             testCase.client().nextHopAddress = this._workerListeningAddressFor(1);
+
             testCase.server().serve(resource);
             testCase.server().response.enforceMinimumPrefixSize(prefixSize);
-            testCase.client().checks.add((client) => {
-                client.expectStatusCode(200);
+
+            testCase.check(() => {
+                testCase.client().expectStatusCode(200);
             });
             testCase.addMissCheck();
+
             await testCase.run();
             await this.dut.finishCaching();
         }
@@ -116,9 +120,11 @@ export default class MyTest extends Test {
             testCase.client().request.for(resource);
             testCase.client().nextHopAddress = this._workerListeningAddressFor(2);
             testCase.client().request.conditions({ ims: resource.notModifiedSince() });
-            testCase.client().checks.add((client) => {
-                client.expectStatusCode(304);
+
+            testCase.check(() => {
+                testCase.client().expectStatusCode(304);
             });
+
             await testCase.run();
         }
 
@@ -133,9 +139,10 @@ export default class MyTest extends Test {
             testCase.client().request.header.add("Cache-Control", "max-age=0");
             testCase.client().nextHopAddress = this._workerListeningAddressFor(3);
 
-            testCase.server().response.header.add(updateField);
             testCase.server().response.startLine.code(304);
+            testCase.server().response.header.add(updateField);
             testCase.server().serve(resource);
+
             testCase.check(() => {
                 testCase.client().expectStatusCode(200);
 
@@ -152,10 +159,12 @@ export default class MyTest extends Test {
 
         {
             const testCase = new HttpTestCase('verify that we cached the response with a maximum-allowed prefix');
+
             testCase.client().request.for(resource);
             // TODO: This is step 4, not 3, but we use the previous step ID to
             // work around dut.finishCaching() inability to see disk updates.
             testCase.client().nextHopAddress = this._workerListeningAddressFor(3);
+
             testCase.check(() => {
                 testCase.client().expectStatusCode(200);
 
@@ -164,6 +173,7 @@ export default class MyTest extends Test {
                 assert(receivedUpdatedField);
                 assert.equal(receivedUpdatedField.value, updateField.value);
             });
+
             await testCase.run();
         }
 
@@ -178,11 +188,11 @@ export default class MyTest extends Test {
             testCase.client().request.header.add("Cache-Control", "max-age=0");
             testCase.client().nextHopAddress = this._workerListeningAddressFor(5);
 
-            testCase.server().response.header.add(updateField.name, updateField.value + "y");
-
             testCase.server().response.startLine.code(304);
+            testCase.server().response.header.add(updateField.name, updateField.value + "y");
             testCase.server().keepListening('always');
             testCase.server().serve(resource);
+
             testCase.check(() => {
                 testCase.client().expectStatusCode(200);
 
