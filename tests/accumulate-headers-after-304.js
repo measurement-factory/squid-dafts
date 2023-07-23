@@ -73,11 +73,12 @@ export default class MyTest extends Test {
         });
 
         configGen.replyHeaderMaxSize(function *(cfg) {
+            // TODO: Justify or remove each size other than 64KB
             yield 8*1024;
             yield 32*1024;
-            yield 64*1024;
+            yield 64*1024; // Squid's default; String::SizeMax_ is 64*1024-1
             yield 128*1024;
-            yield 2048*1024;
+            yield 2*1024*1024;
         });
 
         return configGen.generateConfigurators();
@@ -95,7 +96,7 @@ export default class MyTest extends Test {
 
         // This header appears in the initially cached response.
         // This header does not appear in the updatingResponse.
-        // This header must upppear in the updatedResponse.
+        // This header must appear in the updatedResponse.
         const hitCheck = new Field(Http.DaftFieldName("Hit-Check"), Gadgets.UniqueId("check"));
 
         const updateHeaderName = Http.DaftFieldName("Update");
@@ -192,7 +193,10 @@ export default class MyTest extends Test {
                 const receivedResponse = testCase.client().transaction().response;
                 assert(receivedResponse.startLine.codeInteger() === 200);
                 assert(!receivedResponse.header.has(hitCheck.name));
+
                 // allow the server argent to stop and the transaction to finish
+                // XXX: The above motivation does not make sense because this
+                // code runs _after_ all transactions have finished.
                 testCase.server().keepListening('never');
             });
 
