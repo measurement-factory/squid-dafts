@@ -10,10 +10,8 @@ import * as AddressPool from "../src/misc/AddressPool";
 import * as Config from "../src/misc/Config";
 import * as ConfigurationGenerator from "../src/test/ConfigGen";
 import * as FuzzyTime from "../src/misc/FuzzyTime";
-import * as Gadgets from "../src/misc/Gadgets";
 import * as Http from "../src/http/Gadgets";
 import assert from "assert";
-import Body from "../src/http/Body";
 import Field from "../src/http/Field";
 import HttpTestCase from "../src/test/HttpCase";
 import Resource from "../src/anyp/Resource";
@@ -61,7 +59,7 @@ export default class MyTest extends Test {
             yield true;
         });
 
-        configGen.dutMemoryCache(function *(cfg) {
+        configGen.dutMemoryCache(function *() {
             yield false;
             yield true;
         });
@@ -72,7 +70,7 @@ export default class MyTest extends Test {
             yield true;
         });
 
-        configGen.replyHeaderMaxSize(function *(cfg) {
+        configGen.replyHeaderMaxSize(function *() {
             // TODO: Justify or remove each size other than 64KB
             yield 8*1024;
             yield 32*1024;
