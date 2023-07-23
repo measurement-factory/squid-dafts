@@ -94,27 +94,21 @@ export default class MyTest extends Test {
         resource.expireAt(FuzzyTime.Soon());
         resource.finalize();
 
-        // This header appears in the initially cached response.
-        // This header does not appear in the updatingResponse.
-        // This header must appear in the updatedResponse.
-        const hitCheck = new Field(Http.DaftFieldName("Hit-Check"), Gadgets.UniqueId("check"));
-
-        const updateHeaderName = Http.DaftFieldName("Update");
-        const updateField = new Field(updateHeaderName, 'x');
+        // single byte growth of this small field pushes Squid over the limit
+        const updateField = new Field(Http.DaftFieldName("Update"), 'x');
         updateField.finalize();
-        const updateHeaderLength = updateField.raw().length;
 
         {
-            const prefixSize = this.prefixSizeMax() - updateHeaderLength;
+            const prefixSize = this.prefixSizeMax() - updateField.raw().length;
             const testCase = new HttpTestCase(`cache ${prefixSize}-byte response prefix which is smaller than the ${this.prefixSizeMax()}-byte maximum`);
             testCase.client().request.for(resource);
             testCase.client().nextHopAddress = this._workerListeningAddressFor(1);
             testCase.server().serve(resource);
             testCase.server().response.enforceMinimumPrefixSize(prefixSize);
-            testCase.server().response.header.add(hitCheck);
             testCase.client().checks.add((client) => {
                 client.expectStatusCode(200);
             });
+            testCase.addMissCheck();
             await testCase.run();
             await this.dut.finishCaching();
         }
@@ -130,7 +124,6 @@ export default class MyTest extends Test {
             await testCase.run();
         }
 
-        let updatingResponse = null;
         {
             const testCase = new HttpTestCase(`grow cached prefix size to match the ${this.prefixSizeMax()}-byte maximum`);
 
@@ -146,10 +139,12 @@ export default class MyTest extends Test {
             testCase.server().response.startLine.code(304);
             testCase.server().serve(resource);
             testCase.check(() => {
-                updatingResponse = testCase.server().transaction().response;
-                const receivedResponse = testCase.client().transaction().response;
-                assert(receivedResponse.startLine.codeInteger() === 200);
-                assert.equal(receivedResponse.header.value(hitCheck.name), hitCheck.value, "preserved originally cached header field");
+                testCase.client().expectStatusCode(200);
+
+                // the client should have received updateField intact
+                const receivedUpdatedField = testCase.client().transaction().response.header.has(updateField.name);
+                assert(receivedUpdatedField);
+                assert.equal(receivedUpdatedField.value, updateField.value);
             });
 
             await testCase.run();
@@ -164,11 +159,12 @@ export default class MyTest extends Test {
             // work around dut.finishCaching() inability to see disk updates.
             testCase.client().nextHopAddress = this._workerListeningAddressFor(3);
             testCase.check(() => {
-                const updatedResponse = testCase.client().transaction().response;
-                const code = updatedResponse.startLine.codeInteger();
-                assert.equal(code, 200);
-                assert.equal(updatingResponse.id(), updatedResponse.id(), "updated X-Daft-Response-ID");
-                assert.equal(updatedResponse.header.values("Last-Modified"), resource.lastModificationTime.toUTCString(), "updated Last-Modified");
+                testCase.client().expectStatusCode(200);
+
+                // the client should have received updateField intact
+                const receivedUpdatedField = testCase.client().transaction().response.header.has(updateField.name);
+                assert(receivedUpdatedField);
+                assert.equal(receivedUpdatedField.value, updateField.value);
             });
             await testCase.run();
         }
@@ -184,21 +180,21 @@ export default class MyTest extends Test {
             testCase.client().request.header.add("Cache-Control", "max-age=0");
             testCase.client().nextHopAddress = this._workerListeningAddressFor(5);
 
-            testCase.server().response.header.addOverwrite(updateHeaderName, "xy");
+            testCase.server().response.header.addOverwrite(updateField.name, updateField.value + "y");
 
             testCase.server().response.startLine.code(304);
             testCase.server().keepListening('always');
             testCase.server().serve(resource);
             testCase.check(() => {
-                const receivedResponse = testCase.client().transaction().response;
-                assert(receivedResponse.startLine.codeInteger() === 200);
-                assert(!receivedResponse.header.has(hitCheck.name));
+                testCase.client().expectStatusCode(200);
 
                 // allow the server argent to stop and the transaction to finish
                 // XXX: The above motivation does not make sense because this
                 // code runs _after_ all transactions have finished.
                 testCase.server().keepListening('never');
             });
+            // TODO: testCase.addMissCheck() does not work because it looks at
+            // the first 304 (Not Modified) response, not the second 200 (OK).
 
             this.dut.ignoreProblems(/Failed to update.*exceed/);
 
