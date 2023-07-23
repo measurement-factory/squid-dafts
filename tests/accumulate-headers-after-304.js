@@ -178,7 +178,7 @@ export default class MyTest extends Test {
             testCase.client().request.header.add("Cache-Control", "max-age=0");
             testCase.client().nextHopAddress = this._workerListeningAddressFor(5);
 
-            testCase.server().response.header.addOverwrite(updateField.name, updateField.value + "y");
+            testCase.server().response.header.add(updateField.name, updateField.value + "y");
 
             testCase.server().response.startLine.code(304);
             testCase.server().keepListening('always');
