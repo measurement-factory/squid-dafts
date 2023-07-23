@@ -93,11 +93,13 @@ export default class MyTest extends Test {
         resource.finalize();
 
         // single byte growth of this small field pushes Squid over the limit
-        const updateField = new Field(Http.DaftFieldName("Update"), 'x');
-        updateField.finalize();
+        const fieldThatWillGrow = new Field(Http.DaftFieldName("Update"), 'x');
+        const grownField = fieldThatWillGrow.clone();
+        grownField.value += "y";
 
         {
-            const prefixSize = this.prefixSizeMax() - updateField.raw().length;
+            fieldThatWillGrow.finalize();
+            const prefixSize = this.prefixSizeMax() - fieldThatWillGrow.raw().length;
             const testCase = new HttpTestCase(`cache ${prefixSize}-byte response prefix which is smaller than the ${this.prefixSizeMax()}-byte maximum`);
 
             testCase.client().request.for(resource);
@@ -140,16 +142,12 @@ export default class MyTest extends Test {
             testCase.client().nextHopAddress = this._workerListeningAddressFor(3);
 
             testCase.server().response.startLine.code(304);
-            testCase.server().response.header.add(updateField);
+            testCase.server().response.header.add(fieldThatWillGrow);
             testCase.server().serve(resource);
 
             testCase.check(() => {
                 testCase.client().expectStatusCode(200);
-
-                // the client should have received updateField intact
-                const receivedUpdatedField = testCase.client().transaction().response.header.has(updateField.name);
-                assert(receivedUpdatedField);
-                assert.equal(receivedUpdatedField.value, updateField.value);
+                testCase.client().transaction().response.header.expectField(fieldThatWillGrow);
             });
 
             await testCase.run();
@@ -167,11 +165,7 @@ export default class MyTest extends Test {
 
             testCase.check(() => {
                 testCase.client().expectStatusCode(200);
-
-                // the client should have received updateField intact
-                const receivedUpdatedField = testCase.client().transaction().response.header.has(updateField.name);
-                assert(receivedUpdatedField);
-                assert.equal(receivedUpdatedField.value, updateField.value);
+                testCase.client().transaction().response.header.expectField(fieldThatWillGrow);
             });
 
             await testCase.run();
@@ -189,12 +183,13 @@ export default class MyTest extends Test {
             testCase.client().nextHopAddress = this._workerListeningAddressFor(5);
 
             testCase.server().response.startLine.code(304);
-            testCase.server().response.header.add(updateField.name, updateField.value + "y");
+            testCase.server().response.header.add(grownField);
             testCase.server().keepListening('always');
             testCase.server().serve(resource);
 
             testCase.check(() => {
                 testCase.client().expectStatusCode(200);
+                assert(!testCase.client().transaction().response.header.has(grownField.name));
 
                 // allow the server argent to stop and the transaction to finish
                 // XXX: The above motivation does not make sense because this
