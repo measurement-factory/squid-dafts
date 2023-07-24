@@ -184,28 +184,19 @@ export default class MyTest extends Test {
 
             testCase.server().response.startLine.code(304);
             testCase.server().response.header.add(grownField);
-            testCase.server().keepListening('always');
+            testCase.server().keepListening(true);
             testCase.server().serve(resource);
 
             testCase.check(() => {
                 testCase.client().expectStatusCode(200);
                 assert(!testCase.client().transaction().response.header.has(grownField.name));
-
-                // allow the server argent to stop and the transaction to finish
-                // XXX: The above motivation does not make sense because this
-                // code runs _after_ all transactions have finished.
-                testCase.server().keepListening('never');
             });
             // TODO: testCase.addMissCheck() does not work because it looks at
             // the first 304 (Not Modified) response, not the second 200 (OK).
 
             this.dut.ignoreProblems(/Failed to update.*exceed/);
 
-            const started = testCase.run();
-            await testCase.server().transaction().sentEverything();
-            // handle proxy's retry attempt (after discovering that it's got too large prefix)
-            testCase.server().resetTransaction();
-            await started;
+            await testCase.run();
         }
 
         AddressPool.ReleaseListeningAddress(resource.uri.address);
