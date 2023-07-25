@@ -130,6 +130,9 @@ export default class MyTest extends Test {
             await testCase.run();
         }
 
+        // our approximation of what we expect the proxy to have in its cache
+        let cachedResponse = null;
+
         {
             const testCase = new HttpTestCase(`grow cached prefix size to match the ${this.prefixSizeMax()}-byte maximum`);
 
@@ -153,6 +156,8 @@ export default class MyTest extends Test {
             await testCase.run();
             // XXX: this.dut.finishCaching() does not see prefix-updating disk I/O
             // await this.dut.finishCaching();
+
+            cachedResponse = testCase.client().transaction().response;
         }
 
         {
@@ -163,10 +168,7 @@ export default class MyTest extends Test {
             // work around dut.finishCaching() inability to see disk updates.
             testCase.client().nextHopAddress = this._workerListeningAddressFor(3);
 
-            testCase.check(() => {
-                testCase.client().expectStatusCode(200);
-                testCase.client().transaction().response.header.expectField(fieldThatWillGrow);
-            });
+            testCase.addHitCheck(cachedResponse);
 
             await testCase.run();
         }
