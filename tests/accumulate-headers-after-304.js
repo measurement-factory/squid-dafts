@@ -191,8 +191,7 @@ export default class MyTest extends Test {
                 testCase.client().expectStatusCode(200);
                 assert(!testCase.client().transaction().response.header.has(grownField.name));
             });
-            // TODO: testCase.addMissCheck() does not work because it looks at
-            // the first 304 (Not Modified) response, not the second 200 (OK).
+            testCase.addMissCheck();
 
             this.dut.ignoreProblems(/Failed to update.*exceed/);
 
