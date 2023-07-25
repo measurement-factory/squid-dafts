@@ -49,8 +49,8 @@ export default class MyTest extends Test {
         const configGen = new ConfigurationGenerator.FlexibleConfigGen();
 
         configGen.workers(function *() {
-            yield 1;
-            yield 5;
+            yield 1; // minimal working configuration
+            yield 5; // the number of test cases; see Config.pokeSameWorker()
         });
 
         configGen.pokeSameWorker(function *(cfg) {
