@@ -92,7 +92,7 @@ export default class MyTest extends Test {
         resource.expireAt(FuzzyTime.Soon());
         resource.finalize();
 
-        // single byte growth of this small field pushes Squid over the limit
+        // single byte growth of this small field pushes Squid over the prefix limit
         const fieldThatWillGrow = new Field(Http.DaftFieldName("Update"), 'x');
         const grownField = fieldThatWillGrow.clone();
         grownField.value += "y";
@@ -118,7 +118,7 @@ export default class MyTest extends Test {
         }
 
         {
-            const testCase = new HttpTestCase('verify that we cached the response with a smaller-than-allowed prefix');
+            const testCase = new HttpTestCase('verify that the proxy cached the response with a smaller-than-allowed prefix');
             testCase.client().request.for(resource);
             testCase.client().nextHopAddress = this._workerListeningAddressFor(2);
             testCase.client().request.conditions({ ims: resource.notModifiedSince() });
@@ -172,7 +172,7 @@ export default class MyTest extends Test {
         }
 
         {
-            const testCase = new HttpTestCase(`push prefix size beyond the ${this.prefixSizeMax()}-byte maximum`);
+            const testCase = new HttpTestCase(`attempt to push cached prefix size beyond the ${this.prefixSizeMax()}-byte maximum`);
 
             resource.modifyNow();
             resource.expireAt(FuzzyTime.DistantFuture());
