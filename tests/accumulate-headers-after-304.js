@@ -187,9 +187,12 @@ export default class MyTest extends Test {
             testCase.server().serve(resource);
             testCase.server().response.startLine.code(304);
             testCase.server().response.header.add(grownField);
+            // expect 2 transactions: revalidation and then unconditional GET
             testCase.server().keepListening(true);
 
             testCase.check(() => {
+                assert.strictEqual(testCase.server().transactionsFinished(), 2);
+
                 testCase.client().expectStatusCode(200);
                 assert(!testCase.client().transaction().response.header.has(grownField.name));
             });
