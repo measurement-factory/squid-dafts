@@ -144,9 +144,9 @@ export default class MyTest extends Test {
             testCase.client().request.header.add("Cache-Control", "max-age=0");
             testCase.client().nextHopAddress = this._workerListeningAddressFor(3);
 
+            testCase.server().serve(resource);
             testCase.server().response.startLine.code(304);
             testCase.server().response.header.add(fieldThatWillGrow);
-            testCase.server().serve(resource);
 
             testCase.check(() => {
                 testCase.client().expectStatusCode(200);
@@ -184,10 +184,10 @@ export default class MyTest extends Test {
             testCase.client().request.header.add("Cache-Control", "max-age=0");
             testCase.client().nextHopAddress = this._workerListeningAddressFor(5);
 
+            testCase.server().serve(resource);
             testCase.server().response.startLine.code(304);
             testCase.server().response.header.add(grownField);
             testCase.server().keepListening(true);
-            testCase.server().serve(resource);
 
             testCase.check(() => {
                 testCase.client().expectStatusCode(200);
