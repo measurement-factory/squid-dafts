@@ -429,12 +429,13 @@ export default class MyTest extends Test {
         if (cfg.upgradePossible())
             testCase.client().transaction().messageParser.assumeBodyPresentAndEndsAtEof("receiving post-101 bytes");
 
+        testCase.server().serve(resource);
         testCase.server().response.startLine.code(101);
         if (cfg.serverHeaders())
             testCase.server().response.header.addMany(...cfg.serverHeaders());
         testCase.server().response.header.add("Connection", "Upgrade");
         testCase.server().response.forceEof = true;
-        testCase.server().serve(resource);
+        testCase.server().response.body.forcePresence("faking post-101 response");
 
         testCase.check(() => {
                 const serverReceived = testCase.server().transaction().request.header.values("Upgrade");
