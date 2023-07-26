@@ -426,6 +426,8 @@ export default class MyTest extends Test {
         testCase.client().request.header.add(Http.DaftFieldName("Content-Length"), earlyClientBody.innedSize());
         testCase.client().request.header.prohibitNamed("Content-Length");
         testCase.client().request.header.prohibitNamed("Transfer-Encoding");
+        if (cfg.upgradePossible())
+            testCase.client().transaction().messageParser.assumeBodyPresentAndEndsAtEof("receiving post-101 bytes");
 
         testCase.server().response.startLine.code(101);
         if (cfg.serverHeaders())
