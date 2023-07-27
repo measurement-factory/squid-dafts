@@ -68,7 +68,7 @@ export default class MyTest extends Test {
         testCase.server().serve(this.resource);
         testCase.server().response.startLine.code(statusCode);
         testCase.server().response.headerDelimiter = "";
-        if (contentLength != -1)
+        if (contentLength !== -1)
             testCase.server().response.header.add("Content-Length", contentLength);
         else
             testCase.server().response.header.prohibitNamed("Content-Length");

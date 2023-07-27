@@ -2,13 +2,13 @@
 // Copyright (C) The Measurement Factory.
 // http://www.measurement-factory.com/
 
-import Promise from "bluebird";
-import * as Config from "../src/misc/Config";
 import * as AddressPool from "../src/misc/AddressPool";
-import HttpTestCase from "../src/test/HttpCase";
+import * as Config from "../src/misc/Config";
 import * as Gadgets from "../src/misc/Gadgets";
-import assert from "assert";
+import HttpTestCase from "../src/test/HttpCase";
 import Test from "../src/overlord/Test";
+
+import assert from "assert";
 
 /* for time conversion to milliseconds */
 const milliseconds = 1;

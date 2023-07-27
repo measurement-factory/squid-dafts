@@ -65,9 +65,8 @@ export default class MyTest extends Test {
             testCase.server().response.tag("first");
             testCase.server().response.header.add(hitCheck);
 
-            testCase.client().checks.add((client) => {
-                client.expectStatusCode(200);
-                const receivedResponse = client.transaction().response;
+            testCase.check(() => {
+                testCase.client().expectStatusCode(200);
             });
 
             await testCase.run();
@@ -80,10 +79,10 @@ export default class MyTest extends Test {
             testCase.client().request.for(resource);
             testCase.client().request.conditions({ ims: resource.notModifiedSince() });
 
-            testCase.client().checks.add((client) => {
-                client.expectStatusCode(304);
-                const receivedResponse = client.transaction().response;
+            testCase.check(() => {
+                testCase.client().expectStatusCode(304);
             });
+
             await testCase.run();
         }
 
