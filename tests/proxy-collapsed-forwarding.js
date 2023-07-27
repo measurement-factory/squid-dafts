@@ -160,8 +160,12 @@ export default class MyTest extends Test {
         missClient.request.for(resource);
         missClient.nextHopAddress = this._workerListeningAddresses[1];
 
-        if (expect503s)
-            testCase.addMissCheck(); // before we add 503-getting clients
+        if (expect503s) {
+            // testCase.addMissCheck() would have included 503-getting clients
+            missClient.checks.add(() => {
+                missClient.expectResponse(testCase.server().transaction().response);
+            });
+        }
 
         // add clients for each worker; they should all collapse on missClient
         for (let worker = 1; worker <= Config.Workers; ++worker) {
