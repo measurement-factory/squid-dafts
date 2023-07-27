@@ -4,16 +4,16 @@
 
 // Proxy MUST update previously cached headers on 304 responses.
 
-import HttpTestCase from "../src/test/HttpCase";
-import Field from "../src/http/Field";
-import Body from "../src/http/Body";
-import Resource from "../src/anyp/Resource";
 import * as AddressPool from "../src/misc/AddressPool";
+import * as Config from "../src/misc/Config";
 import * as FuzzyTime from "../src/misc/FuzzyTime";
 import * as Gadgets from "../src/misc/Gadgets";
-import * as Config from "../src/misc/Config";
-import assert from "assert";
+import Field from "../src/http/Field";
+import HttpTestCase from "../src/test/HttpCase";
+import Resource from "../src/anyp/Resource";
 import Test from "../src/overlord/Test";
+
+import assert from "assert";
 
 Config.Recognize([
     {

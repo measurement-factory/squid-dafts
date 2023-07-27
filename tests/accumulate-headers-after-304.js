@@ -11,11 +11,12 @@ import * as Config from "../src/misc/Config";
 import * as ConfigurationGenerator from "../src/test/ConfigGen";
 import * as FuzzyTime from "../src/misc/FuzzyTime";
 import * as Http from "../src/http/Gadgets";
-import assert from "assert";
 import Field from "../src/http/Field";
 import HttpTestCase from "../src/test/HttpCase";
 import Resource from "../src/anyp/Resource";
 import Test from "../src/overlord/Test";
+
+import assert from "assert";
 
 Config.Recognize([
     {
