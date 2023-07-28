@@ -426,13 +426,16 @@ export default class MyTest extends Test {
         testCase.client().request.header.add(Http.DaftFieldName("Content-Length"), earlyClientBody.innedSize());
         testCase.client().request.header.prohibitNamed("Content-Length");
         testCase.client().request.header.prohibitNamed("Transfer-Encoding");
+        if (cfg.upgradePossible())
+            testCase.client().transaction().messageParser.assumeBodyPresentAndEndsAtEof("receiving post-101 bytes");
 
+        testCase.server().serve(resource);
         testCase.server().response.startLine.code(101);
         if (cfg.serverHeaders())
             testCase.server().response.header.addMany(...cfg.serverHeaders());
         testCase.server().response.header.add("Connection", "Upgrade");
         testCase.server().response.forceEof = true;
-        testCase.server().serve(resource);
+        testCase.server().response.body.forcePresence("faking post-101 response");
 
         testCase.check(() => {
                 const serverReceived = testCase.server().transaction().request.header.values("Upgrade");
