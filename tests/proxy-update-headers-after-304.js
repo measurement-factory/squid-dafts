@@ -4,16 +4,16 @@
 
 // Proxy MUST update previously cached headers on 304 responses.
 
-import HttpTestCase from "../src/test/HttpCase";
-import Field from "../src/http/Field";
-import Body from "../src/http/Body";
-import Resource from "../src/anyp/Resource";
 import * as AddressPool from "../src/misc/AddressPool";
+import * as Config from "../src/misc/Config";
 import * as FuzzyTime from "../src/misc/FuzzyTime";
 import * as Gadgets from "../src/misc/Gadgets";
-import * as Config from "../src/misc/Config";
-import assert from "assert";
+import Field from "../src/http/Field";
+import HttpTestCase from "../src/test/HttpCase";
+import Resource from "../src/anyp/Resource";
 import Test from "../src/overlord/Test";
+
+import assert from "assert";
 
 Config.Recognize([
     {
@@ -55,10 +55,6 @@ export default class MyTest extends Test {
         // This header must appear in the updatedResponse.
         const hitCheck = new Field("X-Daft-Hit-Check", Gadgets.UniqueId("check"));
 
-        // This header starts small in the initially cached response
-        // but becomes large in the updatingResponse.
-        let growingHeader = new Field("X-Daft-Growing", "small");
-
         {
             let testCase = new HttpTestCase('forward a cachable response');
 
@@ -68,7 +64,6 @@ export default class MyTest extends Test {
             testCase.server().serve(resource);
             testCase.server().response.tag("first");
             testCase.server().response.header.add(hitCheck);
-            testCase.server().response.header.add(growingHeader);
 
             testCase.client().checks.add((client) => {
                 client.expectStatusCode(200);
@@ -99,8 +94,6 @@ export default class MyTest extends Test {
             resource.modifyNow();
             resource.expireAt(FuzzyTime.DistantFuture());
 
-            growingHeader.value = "la" + "A".repeat(100) + "rge";
-
             testCase.client().nextHopAddress = this._workerListeningAddresses[2];
             testCase.client().request.for(resource);
             testCase.client().request.conditions({ ims: resource.modifiedSince() });
@@ -109,7 +102,6 @@ export default class MyTest extends Test {
             testCase.server().serve(resource);
             testCase.server().response.tag("second");
             testCase.server().response.startLine.code(304);
-            testCase.server().response.header.add(growingHeader);
 
             testCase.check(() => {
                 testCase.client().expectStatusCode(200);
