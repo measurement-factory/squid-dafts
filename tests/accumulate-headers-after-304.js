@@ -72,12 +72,9 @@ export default class MyTest extends Test {
         });
 
         configGen.replyHeaderMaxSize(function *() {
-            // TODO: Justify or remove each size other than 64KB
-            yield 8*1024;
-            yield 32*1024;
+            yield 8*1024-1; // odd; smaller than default, but big enough to accommodate most customizations
             yield 64*1024; // Squid's default; String::SizeMax_ is 64*1024-1
-            yield 128*1024;
-            yield 2*1024*1024;
+            yield 2*1024*1024; // bigger than default, but small enough to keep a test run under a second
         });
 
         return configGen.generateConfigurators();
