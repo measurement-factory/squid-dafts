@@ -194,7 +194,7 @@ class TransactionConfig
     }
 
     _toFields(protocols) {
-        //protocols.map(v => console.log("v[i]: ", v));
+        //protocols.map(v => console.log("v[i]:", v));
         if (this.oneProtocolPerField)
             return protocols.map(p => new HeaderField("Upgrade", p.gist()));
 

@@ -173,7 +173,7 @@ export default class MyTest extends Test {
                 // server, but we can get a response that was cached earlier
                 const receivedResourceId = retrieved.header.value(nameRfr);
                 if (this._lastCachedResource.id !== receivedResourceId) {
-                    context.log("no hit validation due to a mismatching resource ID; wanted ",
+                    context.log("no hit validation due to a mismatching resource ID; wanted",
                         this._lastCachedResource.id, "but got", receivedResourceId);
                     return;
                 }
