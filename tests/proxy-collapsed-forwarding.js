@@ -209,6 +209,23 @@ export default class MyTest extends Test {
         if (!expect503s)
             testCase.addMissCheck(); // all clients
 
+        // eventually leads to the "slot->sameKey()" assertion for one of  worker 2 clients
+        // --workers 3 --collapsed-requests '{1:0,2:300,3:1}' --sending-order ch-sh-sb --dut-memory-cache=false --dut-disk-cache=true --body-size 33000
+        testCase.makeClients(1, (purgeClient) => {
+            purgeClient.request.for(resource);
+            purgeClient.nextHopAddress = this._workerListeningAddresses[1];
+            assert(purgeClient.request);
+            assert(purgeClient.request.startLine);
+            purgeClient.request.startLine.method = 'PURGE';
+            purgeClient.transaction().blockSendingUntil(
+                missClient.transaction().receivedEverything(),
+                "wait for the miss response headers to reach the 1st client before sending PURGE request");
+             purgeClient.checks.add(client => {
+                const scode = client.transaction().response.startLine.codeInteger();
+                assert(scode === 200);
+             });
+        });
+
         await testCase.run();
 
         if (this.dut.config().cachingEnabled()) {
