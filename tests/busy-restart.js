@@ -4,16 +4,15 @@
 
 /* Tests HTTP proxy cache availability, consistency across hard restarts */
 
-import assert from "assert";
-import HttpTestCase from "../src/test/HttpCase";
-import Body from "../src/http/Body";
-import Resource from "../src/anyp/Resource";
-import * as Http from "../src/http/Gadgets";
-import * as Config from "../src/misc/Config";
 import * as AddressPool from "../src/misc/AddressPool";
-import * as Gadgets from "../src/misc/Gadgets";
+import * as Config from "../src/misc/Config";
+import * as Http from "../src/http/Gadgets";
 import ConfigGen from "../src/test/ConfigGen";
+import HttpTestCase from "../src/test/HttpCase";
+import Resource from "../src/anyp/Resource";
 import Test from "../src/overlord/Test";
+
+import assert from "assert";
 
 export default class MyTest extends Test {
 
@@ -95,7 +94,7 @@ export default class MyTest extends Test {
                 ++sequentialErrors;
                 if (sequentialErrors <= sequentialErrorsToReportMax) {
                     console.log("ignoring optional transaction error:", error);
-                    if (sequentialErrors == sequentialErrorsToReportMax)
+                    if (sequentialErrors === sequentialErrorsToReportMax)
                         console.log("will not report subsequent sequential optional transaction errors");
                 }
             }
@@ -159,7 +158,7 @@ export default class MyTest extends Test {
                     context.log("no hit validation due to the lack of a valid response status code");
                     return;
                 }
-                if (scode != 200) {
+                if (scode !== 200) {
                     context.log("no hit validation due to response status code:", scode);
                     return;
                 }
@@ -174,7 +173,7 @@ export default class MyTest extends Test {
                 // server, but we can get a response that was cached earlier
                 const receivedResourceId = retrieved.header.value(nameRfr);
                 if (this._lastCachedResource.id !== receivedResourceId) {
-                    context.log("no hit validation due to a mismatching resource ID; wanted ",
+                    context.log("no hit validation due to a mismatching resource ID; wanted",
                         this._lastCachedResource.id, "but got", receivedResourceId);
                     return;
                 }

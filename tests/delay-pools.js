@@ -5,16 +5,15 @@
 // Check whether proxy-introduced delays match proxy configuration.
 // TODO: Test more than just response_delay_pool directive.
 
-import Promise from "bluebird";
-import HttpTestCase from "../src/test/HttpCase";
-import Body from "../src/http/Body";
-import Resource from "../src/anyp/Resource";
 import * as AddressPool from "../src/misc/AddressPool";
-import * as Http from "../src/http/Gadgets";
-import * as Gadgets from "../src/misc/Gadgets";
 import * as Config from "../src/misc/Config";
-import Test from "../src/overlord/Test";
+import * as Gadgets from "../src/misc/Gadgets";
+import Body from "../src/http/Body";
 import ConfigGen from "../src/test/ConfigGen";
+import HttpTestCase from "../src/test/HttpCase";
+import Resource from "../src/anyp/Resource";
+import Test from "../src/overlord/Test";
+
 import assert from "assert";
 
 Config.Recognize([

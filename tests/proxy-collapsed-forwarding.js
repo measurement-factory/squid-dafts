@@ -88,8 +88,8 @@ export default class MyTest extends Test {
         ]});
 
         configGen.addGlobalConfigVariation({collapsedRequests: [
-            {each:1,1:0},
-            {each:2},
+            {each: 1, 1: 0},
+            {each: 2},
         ]});
 
         configGen.addGlobalConfigVariation({bodySize: [
@@ -101,7 +101,7 @@ export default class MyTest extends Test {
         // TODO: Chunking.
 
         configGen.addGlobalConfigAdjustment('retries', config => {
-            if (config.SendingOrder != soTrueCollapsing) {
+            if (config.SendingOrder !== soTrueCollapsing) {
                 const attempts = config.Tests === undefined ? 10 : config.Tests;
                 config.use({retries: attempts-1});
             }
@@ -160,8 +160,12 @@ export default class MyTest extends Test {
         missClient.request.for(resource);
         missClient.nextHopAddress = this._workerListeningAddresses[1];
 
-        if (expect503s)
-            testCase.addMissCheck(); // before we add 503-getting clients
+        if (expect503s) {
+            // testCase.addMissCheck() would have included 503-getting clients
+            missClient.checks.add(() => {
+                missClient.expectResponse(testCase.server().transaction().response);
+            });
+        }
 
         // add clients for each worker; they should all collapse on missClient
         for (let worker = 1; worker <= Config.Workers; ++worker) {
@@ -199,7 +203,8 @@ export default class MyTest extends Test {
             });
         }
 
-        this._blockServer(testCase);
+        // TODO: These parameters should probably become MyTest data members.
+        this._blockServer(expect503s, resource, testCase);
 
         if (!expect503s)
             testCase.addMissCheck(); // all clients
@@ -244,10 +249,13 @@ export default class MyTest extends Test {
         assert(false); // not reached
     }
 
-    _blockServer(testCase) {
+    _blockServer(expect503s, resource, testCase) {
         if (Config.SendingOrder === soTrueCollapsing) {
+            const event = expect503s ?
+                testCase.clientsSentEverything() :
+                this.dut.finishStagingRequests(resource.uri.path, testCase.clients().length);
             testCase.server().transaction().blockSendingUntil(
-                testCase.clientsSentEverything(),
+                event,
                 "wait for all clients to collapse");
             return;
         }
