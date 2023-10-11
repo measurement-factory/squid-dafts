@@ -433,6 +433,7 @@ Config.Recognize([
         description: "Turns on rock disk cache",
     },
     {
+        // XXX: Rename! smp=false still uses three kids when cache-type=disk
         option: "smp",
         type: "Boolean",
         default: "false",
