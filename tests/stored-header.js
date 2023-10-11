@@ -102,11 +102,12 @@ class TestConfig
         if (cfg.cacheType() === "disk") // rock slots
             return [1, 4, 16];
 
-        if (cfg.cacheType() === "mem" && !cfg.smp()) // local memory pages
-            return [1, 16];
-
-        if (cfg.cacheType() === "mem" && cfg.smp()) // shared memory pages
-            return [1, 8, 16];
+        if (cfg.cacheType() === "mem") {
+            if (cfg.workers() > 1) // shared memory pages
+                return [1, 8, 16];
+            else // local memory pages
+                return [1, 16];
+        }
 
         assert(cfg.cacheType() === "all");
         return [1, 4, 8, 16];
@@ -145,14 +146,17 @@ export default class MyTest extends Test {
         cfg.memoryCaching(memCache);
         cfg.diskCaching(diskCache);
 
-        if (Config.smp()) {
-            cfg.workers(2);
-            cfg.dedicatedWorkerPorts(true);
-            this._workerListeningAddresses = cfg.workerListeningAddresses();
-        }
-
         if (Config.dutRequestsWhole())
             cfg.custom("range_offset_limit 10 GB");
+
+        // XXX: The following code duplicates cache-response.js.
+
+        cfg.workers(Config.workers()); // TODO: This should be the default.
+        cfg.dedicatedWorkerPorts(Config.workers() > 1); // TODO: This should be the default.
+
+        // TODO: There should be no need to remember these, as they are always
+        // available via this.dut.config(), which should cache them.
+        this._workerListeningAddresses = cfg.workerListeningAddresses();
     }
 
     static Configurators() {
@@ -187,13 +191,20 @@ export default class MyTest extends Test {
             // else Squid would not cache the 206 (Partial Content) response
         });
 
-        configGen.smp(function *(cfg) {
-            yield false;
+        configGen.workers(function *(cfg) {
+            yield 1;
             if (cfg.cacheType() !== "none")
-                yield true;
+                yield 2;
         });
 
-        // needs cfg.cacheType() and cfg.smp()
+        configGen.pokeSameWorker(function *(cfg) {
+            if (cfg.workers() > 1) // poking different workers requires multiple workers
+                yield false;
+            else // XXX: Remove this line to test same-worker poking in SMP setup as well!
+            yield true;
+        });
+
+        // needs cfg.cacheType() and cfg.workers()
         configGen.responsePrefixSizeMinimum(function *(cfg) {
             yield *(TestConfig.Prefixes(cfg));
         });
@@ -381,8 +392,7 @@ export default class MyTest extends Test {
         let missCase = new HttpTestCase(`forward a response with ${Config.responsePrefixSizeMinimum()}-byte header and ${Config.bodySize()}-byte body`);
         missCase.server().serve(resource);
         missCase.client().request.for(resource);
-        if (Config.smp())
-            missCase.client().nextHopAddress = this._workerListeningAddresses[1];
+        missCase.client().nextHopAddress = this._workerListeningAddressFor(1);
         missCase.addMissCheck();
 
         await missCase.run();
@@ -393,8 +403,7 @@ export default class MyTest extends Test {
         const hitHow = ranges ? ` with a '${Config.requestRange()}' range request` : '';
         const hitCase = new HttpTestCase(`hit a ${Config.responsePrefixSizeMinimum()}-byte header and ${Config.bodySize()}-byte body response${hitHow}`);
         hitCase.client().request.for(resource);
-        if (Config.smp())
-            hitCase.client().nextHopAddress = this._workerListeningAddresses[2];
+        hitCase.client().nextHopAddress = this._workerListeningAddressFor(2);
 
         if (ranges) {
             hitCase.client().configureFor206(ranges, resource.body.whole());
@@ -411,6 +420,31 @@ export default class MyTest extends Test {
         await this.testSimpleForwarding();
         await this.testRangeHandling();
         await this.testCaching();
+    }
+
+    // XXX: Duplicates cache-response.js.
+    // TODO: Move/Refactor into Proxy::workerForStep().primaryAddress(): The
+    // primary listening address of the round-robin selected worker. Here,
+    // "primary" means a worker-designated address (if it exists) or the
+    // general proxy listening address (otherwise).
+    _workerListeningAddressFor(stepId)
+    {
+        assert(stepId >= 1);
+
+        let workerId = 1;
+        if (!Config.pokeSameWorker()) {
+            // use workers in round-robin fashion, using the first worker for
+            // the first step; both worker and step IDs are 1-based
+            assert(Config.workers() > 0);
+            workerId = 1 + ((stepId-1) % Config.workers());
+        }
+
+        // The first this._workerListeningAddresses element is a well-known
+        // port address shared by all workers. We do not use it here.
+        const offset = 1 + (workerId - 1);
+        assert(offset >= 0);
+        assert(offset < this._workerListeningAddresses.length);
+        return this._workerListeningAddresses[offset];
     }
 }
 
@@ -433,11 +467,14 @@ Config.Recognize([
         description: "Turns on rock disk cache",
     },
     {
-        // XXX: Rename! smp=false still uses three kids when cache-type=disk
-        option: "smp",
+        option: "workers",
+        type: "Number",
+        description: "the number of Squid worker processes",
+    },
+    {
+        option: "poke-same-worker",
         type: "Boolean",
-        default: "false",
-        description: "In this mode MISS and HIT requests will go to different proxy SMP workers",
+        description: "send all test case requests to the same Squid worker process",
     },
     {
         option: "request-range",
