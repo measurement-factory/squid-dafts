@@ -77,6 +77,12 @@ export default class MyTest extends Test {
             yield 2*1024*1024; // bigger than default, but small enough to keep a test run under a second
         });
 
+        // TODO: How to add our regex when the user configured their own?
+        configGen.ignoreDutProblems(function *(cfg) {
+            if (cfg.replyHeaderMaxSize() > 64*1024)
+                yield [ /Increasing reply_header_max_size/ ];
+        });
+
         return configGen.generateConfigurators();
     }
 
