@@ -182,6 +182,8 @@ export default class MyTest extends Test {
         });
 
         configGen.cacheType(function *(cfg) {
+            // XXX: Test forwarding of uncachable responses, especially 206
+            // responses separately. This test is about _stored_ headers.
             yield "none";
             if (cfg.dutRequestsWhole()) {
                 yield "disk";
