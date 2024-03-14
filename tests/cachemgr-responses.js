@@ -99,6 +99,9 @@ export default class MyTest extends Test {
     async run(/*testRun*/) {
         const menuPages = await this.dut.getCacheManagerMenu();
 
+        // Squid may also mark pages as 'disabled' or 'protected'.
+        // for other cachemgr_passwd configurations.
+        // TODO: test these configurations.
         if (Config.Pages === "public")
             assert(menuPages.every(p => p.protection === "public")); // all pages are forced to be 'public'
         if (Config.Pages === "hidden")
