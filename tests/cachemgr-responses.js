@@ -18,16 +18,10 @@ Config.Recognize([
         description: "the number of Squid worker processes",
     },
     {
-        option: "poke-same-worker",
-        type: "Boolean",
-        description: "send all test case requests to the same Squid worker process",
-    },
-    {
         option: "pages",
         type: "String",
-        enum: ["all", "hidden"],
-        default: "all",
-        description: "specify the pages to test",
+        enum: ["public", "hidden"],
+        description: `group of pages: 'public': withhout password protection, 'hidden': with password protection`,
     },
 ]);
 
@@ -47,14 +41,8 @@ export default class MyTest extends Test {
         });
 
         configGen.pages(function *() {
-            yield "all";
+            yield "public";
             yield "hidden";
-        });
-
-        configGen.pokeSameWorker(function *(cfg) {
-            if (cfg.workers() > 1) // poking different workers requires multiple workers
-                yield false;
-            yield true;
         });
 
         configGen.dutMemoryCache(function *() {
@@ -72,8 +60,9 @@ export default class MyTest extends Test {
     }
 
     _configureDut(cfg) {
-        if (Config.Pages === "all")
+        if (Config.Pages === "public")
             cfg.custom('cachemgr_passwd none all');
+        cfg.workers(Config.workers()); // TODO: This should be the default.
     }
 
     async testMenu(name, description) {
@@ -109,18 +98,26 @@ export default class MyTest extends Test {
 
     async run(/*testRun*/) {
         const menuPages = await this.dut.getCacheManagerMenu();
-        console.log(menuPages);
+
+        if (Config.Pages === "public")
+            assert(menuPages.every(p => p.protection === "public")); // all pages are forced to be 'public'
+        if (Config.Pages === "hidden")
+            assert(menuPages.some(p => p.protection === "hidden"));
+
         for (let page of menuPages) {
-            if (this._skip.includes(page)) {
-                console.log("Skipping: " + page);
+            if (this._skip.includes(page.name)) {
+                console.log("Skipping: " + page.name);
                 continue;
             }
-            if (Config.Pages === "all") {
-                await this.testMenu(page, `attempt to cache ${page} Cache Manager response`);
-                await this.testMenu(page, `check that ${page} Cache Manager response is not cached`);
+            if (Config.Pages === "public") {
+                await this.testMenu(page.name, `attempt to cache ${page.name} Cache Manager response`);
+                await this.testMenu(page.name, `check that ${page.name} Cache Manager response is not cached`);
             } else {
-                const page = "config";
-                await this.testHiddenPage(page, `check that the ${page} hidden Cache Manager page is not available`);
+                assert(Config.Pages === "hidden");
+                if (page.protection === "public")
+                    continue;
+                assert(page.protection === "hidden");
+                await this.testHiddenPage(page.name, `check that the ${page.name} hidden Cache Manager page is not available`);
             }
         }
     }
