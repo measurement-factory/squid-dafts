@@ -187,7 +187,9 @@ export default class MyTest extends Test {
 
         // cache_peers that return 503s may generate ERRORs;
         // cache_peers that do not listen may generate ERRORs
-        this.dut.ignoreProblems(/Connection to peer.* failed/);
+        this.dut.ignoreProblems(/Connection to peer.* failed/); // Squids that do not detail outgoing connection failures
+        this.dut.ignoreProblems(/Cannot establish CONNECT tunnel/); // Squids that do (cache_peer cases)
+        this.dut.ignoreProblems(/Failed to establish a TCP connection/); // Squids that do (DIRECT cases)
 
         await this.testGetThroughCachePeerToBadOrigin();
         await this.testConnectThroughCachePeerToBadOrigin();
