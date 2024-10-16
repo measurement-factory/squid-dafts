@@ -102,7 +102,7 @@ export default class MyTest extends Test {
         const resource = new Resource();
         resource.uri.address = AddressPool.ReserveListeningAddress();
         resource.modifiedAt(FuzzyTime.DistantPast());
-        resource.expireAt(FuzzyTime.Now());
+        resource.expireAt(Config.sendingOrder() === soTrueCollapsing ? FuzzyTime.Now() : FuzzyTime.DistantFuture());
         resource.finalize();
 
         // TODO: Rename to testCase if this is the only one
@@ -122,7 +122,10 @@ export default class MyTest extends Test {
         firstCase.makeClients(1, (hitClient) => {
             hitClient.request.for(resource);
             hitClient.nextHopAddress = this._workerListeningAddressFor(2);
-            hitClient.request.header.add("Cache-Control", "max-age=0");
+
+            // tempt Squid to needlessly revalidate (where possible)
+            if (Config.sendingOrder() === soTrueCollapsing)
+                hitClient.request.header.add("Cache-Control", "max-age=0");
 
             this._blockClient(hitClient, missClient, firstCase);
             firstCase.check(() => {
@@ -145,8 +148,10 @@ export default class MyTest extends Test {
             x.response.startLine.code(304);
         });
 
-        // XXX: ERR_ASSERTION]: same response X-Daft-Request-ID field value
-        // firstCase.addMissCheck();
+        if (Config.sendingOrder() === soTrueCollapsing)
+            firstCase.addMissCheck();
+        // else revalidation changes X-Daft-Request-ID response header value,
+        // resulting in addMissCheck() failure; TODO: Check forwarding somehow
 
         await firstCase.run();
 
