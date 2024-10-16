@@ -57,7 +57,7 @@ Config.Recognize([
 export default class MyTest extends Test {
 
     _configureDut(cfg) {
-        assert(Config.dutMemoryCache() || Config.dutDiskCache());
+        assert(cfg.cachingEnabled());
         cfg.workers(Config.workers());
         cfg.dedicatedWorkerPorts(Config.workers() > 1);
         this._workerListeningAddresses = cfg.workerListeningAddresses();
@@ -132,15 +132,16 @@ export default class MyTest extends Test {
                 // else we cannot use hitClient.expectResponse() because 200
                 // response received by hitClient was updated by origin 304
                 // response; we lack functions that check for such updates.
-                // TODO: Check body forwarding!
+                // TODO: Check body forwarding (at least)!
             });
         });
 
         this._blockServer(resource, firstCase);
 
-        // expect 2 transactions: miss and revalidation
+        // Expect up to 2 transactions: miss and revalidation. Revalidation
+        // happens in non-collapsed cases and in older Squids that validate
+        // responses to collapsed requests.
         firstCase.server().onSubsequentTransaction((x) => {
-            console.log("XXX2: onSubsequentTransaction", x);
             x.response.startLine.code(304);
         });
 
