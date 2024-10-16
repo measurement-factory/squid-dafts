@@ -90,9 +90,9 @@ export default class MyTest extends Test {
         });
 
         configGen.sendingOrder(function *(cfg) {
+            yield soPureHits;
+            yield soLiveFeeding;
             yield soTrueCollapsing;
-            // XXX: Remove? yield soLiveFeeding;
-            // XXX: This allows testing revalidation w/o collapsing: yield soPureHits;
         });
 
         return configGen.generateConfigurators();
@@ -127,6 +127,12 @@ export default class MyTest extends Test {
             this._blockClient(hitClient, missClient, firstCase);
             firstCase.check(() => {
                 hitClient.expectStatusCode(200);
+                if (firstCase.server().transactionsStarted() === 1)
+                    hitClient.expectResponse(firstCase.server().transaction().response);
+                // else we cannot use hitClient.expectResponse() because 200
+                // response received by hitClient was updated by origin 304
+                // response; we lack functions that check for such updates.
+                // TODO: Check body forwarding!
             });
         });
 
