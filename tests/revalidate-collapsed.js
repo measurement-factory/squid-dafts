@@ -183,8 +183,10 @@ export default class MyTest extends Test {
 
         if (Config.sendingOrder() === soPureHits) {
             hitClient.transaction().blockSendingUntil(
-                missClient.transaction().receivedEverything(),
-                "wait for the whole miss response to reach the 1st client");
+                missClient.transaction().receivedEverything().then(async () => {
+                    await this.dut.finishCaching(); }),
+                "wait for the whole miss response to reach the 1st client and " +
+                "also get cached by the proxy");
             return;
         }
 
