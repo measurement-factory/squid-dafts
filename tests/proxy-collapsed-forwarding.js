@@ -92,6 +92,12 @@ export default class MyTest extends Test {
             {each: 2},
         ]});
 
+        // XXX: Zero Config.bodySize() responses cannot be used for
+        // soLiveFeeding cases because we cannot tell the server to block
+        // (after sending headers and) before sending body when there is no
+        // body to send. Body-less soLiveFeeding cases are currently the same
+        // as soPureHits cases. A zero decoded body size test can only work
+        // correctly with chunked responses (see TODO below).
         configGen.addGlobalConfigVariation({bodySize: [
             0,
             Config.DefaultBodySize(),
@@ -261,6 +267,10 @@ export default class MyTest extends Test {
         }
 
         if (Config.SendingOrder === soLiveFeeding) {
+            // See XXX in addGlobalConfigVariation('bodySize'...)
+            if (!Config.bodySize())
+                return;
+
             testCase.server().transaction().blockSendingBodyUntil(
                 testCase.clientsSentEverything(),
                 "wait for all clients to send requests");
