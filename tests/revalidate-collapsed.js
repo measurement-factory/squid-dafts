@@ -4,9 +4,12 @@
 
 // Tests whether worker A attempts to revalidate an HTTP response that is
 // being received from worker B (because worker A request was collapsed).
-
-// XXX: Currently, the test attempts to trigger said revalidation (in hope
-// that it will hit a certain Squid assertion), but does not check much.
+// Revalidation is _not_ expected:
+// * Revalidation is not expected in soTrueCollapsing cases (despite Squid
+//   being tempted to revalidate) because Squid should treat responses to
+//   collapsed requests as fresh.
+// * Revalidation is not expected in soLiveFeeding and soPureHits cases
+//   because we do not tempt Squid to revalidate in those cases.
 
 import * as AddressPool from "../src/misc/AddressPool";
 import * as Config from "../src/misc/Config";
@@ -61,7 +64,7 @@ export default class MyTest extends Test {
         cfg.workers(Config.workers());
         cfg.dedicatedWorkerPorts(Config.workers() > 1);
         this._workerListeningAddresses = cfg.workerListeningAddresses();
-        cfg.collapsedForwarding(Config.sendingOrder() === soTrueCollapsing); // TODO: Make configurable.
+        cfg.collapsedForwarding(Config.sendingOrder() === soTrueCollapsing);
     }
 
     static Configurators() {
@@ -111,21 +114,20 @@ export default class MyTest extends Test {
         resource.expireAt(Config.sendingOrder() === soTrueCollapsing ? FuzzyTime.Now() : FuzzyTime.DistantFuture());
         resource.finalize();
 
-        // TODO: Rename to testCase if this is the only one
-        const firstCase = new HttpTestCase(`cache a response and collapse on the miss request`);
-        const missClient = firstCase.client();
+        const testCase = new HttpTestCase(`cache a response and collapse on the miss request`);
+        const missClient = testCase.client();
         {
             missClient.request.for(resource);
             missClient.nextHopAddress = this._workerListeningAddressFor(1);
 
-            firstCase.server().serve(resource);
+            testCase.server().serve(resource);
 
-            firstCase.check(() => {
+            testCase.check(() => {
                 missClient.expectStatusCode(200);
             });
         }
 
-        firstCase.makeClients(1, (hitClient) => {
+        testCase.makeClients(1, (hitClient) => {
             hitClient.request.for(resource);
             hitClient.nextHopAddress = this._workerListeningAddressFor(2);
 
@@ -133,11 +135,11 @@ export default class MyTest extends Test {
             if (Config.sendingOrder() === soTrueCollapsing)
                 hitClient.request.header.add("Cache-Control", "max-age=0");
 
-            this._blockClient(hitClient, missClient, firstCase);
-            firstCase.check(() => {
+            this._blockClient(hitClient, missClient, testCase);
+            testCase.check(() => {
                 hitClient.expectStatusCode(200);
-                if (firstCase.server().transactionsStarted() === 1)
-                    hitClient.expectResponse(firstCase.server().transaction().response);
+                if (testCase.server().transactionsStarted() === 1)
+                    hitClient.expectResponse(testCase.server().transaction().response);
                 // else we cannot use hitClient.expectResponse() because 200
                 // response received by hitClient was updated by origin 304
                 // response; we lack functions that check for such updates.
@@ -145,21 +147,21 @@ export default class MyTest extends Test {
             });
         });
 
-        this._blockServer(resource, firstCase);
+        this._blockServer(resource, testCase);
 
         // Expect up to 2 transactions: miss and revalidation. Revalidation
         // happens in non-collapsed cases and in older Squids that validate
         // responses to collapsed requests.
-        firstCase.server().onSubsequentTransaction((x) => {
+        testCase.server().onSubsequentTransaction((x) => {
             x.response.startLine.code(304);
         });
 
         if (Config.sendingOrder() === soTrueCollapsing)
-            firstCase.addMissCheck();
+            testCase.addMissCheck();
         // else revalidation changes X-Daft-Request-ID response header value,
         // resulting in addMissCheck() failure; TODO: Check forwarding somehow
 
-        await firstCase.run();
+        await testCase.run();
 
         AddressPool.ReleaseListeningAddress(resource.uri.address);
     }
