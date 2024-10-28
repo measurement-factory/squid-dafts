@@ -99,7 +99,7 @@ export default class MyTest extends Test {
         });
 
         configGen.dropInvalidConfigurations(cfg => {
-            if (cfg.dutDiskCache() && !cfg.dutMemoryCache() &&
+            if (cfg.dutDiskCache() &&
                 cfg.sendingOrder() === soLiveFeeding) // when we cannot wait for Squid to cache the whole response
                 throw new ConfigurationGenerator.ConfigurationError("Work around cache_dir inability to read while writing");
         });
