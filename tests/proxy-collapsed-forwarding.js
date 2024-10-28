@@ -152,7 +152,7 @@ export default class MyTest extends Test {
         // 503 responses from Squid) in rock-only non-CF tests
         // TODO: Exclude soPureHits after adding this.dut.finishCaching().
         const expect503sDueToRockLimitations =
-            !Config.dutMemoryCache() && Config.dutDiskCache() &&
+            Config.dutDiskCache() &&
             Config.sendingOrder() !== soTrueCollapsing;
 
         // when there is no caching at all, all clients ought to miss, and all
