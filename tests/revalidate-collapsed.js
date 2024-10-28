@@ -198,17 +198,14 @@ export default class MyTest extends Test {
     // TODO: Poorly duplicates proxy-collapsed-forwarding.js
     _blockServer(resource, testCase) {
         if (Config.sendingOrder() === soTrueCollapsing) {
-            const event = this.dut.finishStagingRequests(resource.uri.path, testCase.clients().length);
-            testCase.server().transaction().blockSendingUntil(
-                event,
-                "wait for all clients to collapse");
+            const { event, eventDescription } = this._serverResumingEvent(resource, testCase);
+            testCase.server().transaction().blockSendingUntil(event, eventDescription);
             return;
         }
 
         if (Config.sendingOrder() === soLiveFeeding) {
-            testCase.server().transaction().blockSendingBodyUntil(
-                testCase.clientsSentEverything(),
-                "wait for all clients to send requests");
+            const { event, eventDescription } = this._serverResumingEvent(resource, testCase);
+            testCase.server().transaction().blockSendingBodyUntil(event, eventDescription);
             return;
         }
 
@@ -218,6 +215,16 @@ export default class MyTest extends Test {
         }
 
         assert(false); // not reached
+    }
+
+    // returns { event, eventDescription } object
+    _serverResumingEvent(resource, testCase) {
+        // We could wait for testCase.clientsSentEverything() first, but it is
+        // not clear whether waiting for two sequential events instead of the
+        // second one saves times (or decreases noise), so we keep it simple.
+        const event = this.dut.finishStagingRequests(resource.uri.path, testCase.clients().length);
+        const eventDescription = "wait for all client requests to reach the proxy";
+        return { event, eventDescription };
     }
 
     // TODO: Move/Refactor into Proxy::workerForStep().primaryAddress(): The
