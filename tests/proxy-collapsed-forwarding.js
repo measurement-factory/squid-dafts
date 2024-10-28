@@ -258,12 +258,8 @@ export default class MyTest extends Test {
 
     _blockServer(expect503s, resource, testCase) {
         if (Config.SendingOrder === soTrueCollapsing) {
-            const event = expect503s ?
-                testCase.clientsSentEverything() :
-                this.dut.finishStagingRequests(resource.uri.path, testCase.clients().length);
-            testCase.server().transaction().blockSendingUntil(
-                event,
-                "wait for all clients to collapse");
+            const { event, eventDescription } = this._serverResumingEvent(expect503s, resource, testCase);
+            testCase.server().transaction().blockSendingUntil(event, eventDescription);
             return;
         }
 
@@ -272,9 +268,8 @@ export default class MyTest extends Test {
             if (!Config.bodySize())
                 return;
 
-            testCase.server().transaction().blockSendingBodyUntil(
-                testCase.clientsSentEverything(),
-                "wait for all clients to send requests");
+            const { event, eventDescription } = this._serverResumingEvent(expect503s, resource, testCase);
+            testCase.server().transaction().blockSendingBodyUntil(event, eventDescription);
             return;
         }
 
@@ -284,5 +279,16 @@ export default class MyTest extends Test {
         }
 
         assert(false); // not reached
+    }
+
+    // returns { event, eventDescription } object
+    _serverResumingEvent(expect503s, resource, testCase) {
+        const event = expect503s ?
+            testCase.clientsSentEverything() :
+            this.dut.finishStagingRequests(resource.uri.path, testCase.clients().length);
+        const eventDescription = expect503s ?
+            "wait for all clients to send requests" :
+            "wait for all client requests to reach the proxy";
+        return { event, eventDescription };
     }
 }
