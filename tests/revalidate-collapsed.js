@@ -153,7 +153,10 @@ export default class MyTest extends Test {
         // happens in non-collapsed cases and in older Squids that validate
         // responses to collapsed requests.
         testCase.server().onSubsequentTransaction((x) => {
-            x.response.startLine.code(304);
+            // Nothing special to configure: If all goes according to the test
+            // plan, Daft will generate a 304 response automatically.
+            // TODO: Add testCase.server().expectMultipleTransactions() or
+            // adjust testCase.server().keepListening(true) effects?
         });
 
         if (Config.sendingOrder() === soTrueCollapsing)
