@@ -92,6 +92,12 @@ export default class MyTest extends Test {
             {each: 2},
         ]});
 
+        // XXX: Zero Config.bodySize() responses cannot be used for
+        // soLiveFeeding cases because we cannot tell the server to block
+        // (after sending headers and) before sending body when there is no
+        // body to send. Body-less soLiveFeeding cases are currently the same
+        // as soPureHits cases. A zero decoded body size test can only work
+        // correctly with chunked responses (see TODO below).
         configGen.addGlobalConfigVariation({bodySize: [
             0,
             Config.DefaultBodySize(),
@@ -144,8 +150,9 @@ export default class MyTest extends Test {
 
         // cache_dir rock cannot read while writing, resulting in misses (and
         // 503 responses from Squid) in rock-only non-CF tests
+        // TODO: Exclude soPureHits after adding this.dut.finishCaching().
         const expect503sDueToRockLimitations =
-            !Config.dutMemoryCache() && Config.dutDiskCache() &&
+            Config.dutDiskCache() &&
             Config.sendingOrder() !== soTrueCollapsing;
 
         // when there is no caching at all, all clients ought to miss, and all
@@ -251,19 +258,18 @@ export default class MyTest extends Test {
 
     _blockServer(expect503s, resource, testCase) {
         if (Config.SendingOrder === soTrueCollapsing) {
-            const event = expect503s ?
-                testCase.clientsSentEverything() :
-                this.dut.finishStagingRequests(resource.uri.path, testCase.clients().length);
-            testCase.server().transaction().blockSendingUntil(
-                event,
-                "wait for all clients to collapse");
+            const { event, eventDescription } = this._serverResumingEvent(expect503s, resource, testCase);
+            testCase.server().transaction().blockSendingUntil(event, eventDescription);
             return;
         }
 
         if (Config.SendingOrder === soLiveFeeding) {
-            testCase.server().transaction().blockSendingBodyUntil(
-                testCase.clientsSentEverything(),
-                "wait for all clients to send requests");
+            // See XXX in addGlobalConfigVariation('bodySize'...)
+            if (!Config.bodySize())
+                return;
+
+            const { event, eventDescription } = this._serverResumingEvent(expect503s, resource, testCase);
+            testCase.server().transaction().blockSendingBodyUntil(event, eventDescription);
             return;
         }
 
@@ -273,5 +279,16 @@ export default class MyTest extends Test {
         }
 
         assert(false); // not reached
+    }
+
+    // returns { event, eventDescription } object
+    _serverResumingEvent(expect503s, resource, testCase) {
+        const event = expect503s ?
+            testCase.clientsSentEverything() :
+            this.dut.finishStagingRequests(resource.uri.path, testCase.clients().length);
+        const eventDescription = expect503s ?
+            "wait for all clients to send requests" :
+            "wait for all client requests to reach the proxy";
+        return { event, eventDescription };
     }
 }
