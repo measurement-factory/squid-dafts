@@ -15,8 +15,6 @@ import * as AddressPool from "../src/misc/AddressPool";
 import * as Config from "../src/misc/Config";
 import * as ConfigurationGenerator from "../src/test/ConfigGen";
 import * as FuzzyTime from "../src/misc/FuzzyTime";
-import * as Http from "../src/http/Gadgets";
-import Field from "../src/http/Field";
 import HttpTestCase from "../src/test/HttpCase";
 import Resource from "../src/anyp/Resource";
 import Test from "../src/overlord/Test";
@@ -93,7 +91,7 @@ export default class MyTest extends Test {
             yield true;
         });
 
-        configGen.sendingOrder(function *(cfg) {
+        configGen.sendingOrder(function *() {
             yield soPureHits;
             yield soLiveFeeding;
             yield soTrueCollapsing;
@@ -119,24 +117,22 @@ export default class MyTest extends Test {
         testCase.server().serve(resource);
 
         const missClient = testCase.client();
-        {
-            missClient.request.for(resource);
-            missClient.nextHopAddress = this._workerListeningAddressFor(1);
-        }
+        missClient.request.for(resource);
+        missClient.nextHopAddress = this._workerListeningAddressFor(1);
 
         // add client(s) to worker(s); they should all collapse on missClient
         for (let worker = 1; worker <= Config.workers(); ++worker) {
-        testCase.makeClients(1, (hitClient) => {
-            hitClient.request.for(resource);
-            hitClient.nextHopAddress = this._workerListeningAddressFor(worker);
+            testCase.makeClients(1, (hitClient) => {
+                hitClient.request.for(resource);
+                hitClient.nextHopAddress = this._workerListeningAddressFor(worker);
 
-            // Tempt Squid to revalidate (when Squid should not revalidate).
-            // Trigger Squid revalidation (when revalidation should happen).
-            hitClient.request.header.add("Cache-Control", "max-age=0");
+                // Tempt Squid to revalidate (when Squid should not revalidate).
+                // Trigger Squid revalidation (when revalidation should happen).
+                hitClient.request.header.add("Cache-Control", "max-age=0");
 
-            this._blockClient(hitClient, missClient, testCase);
-        });
-        } // TODO: Reformat
+                this._blockClient(hitClient, missClient, testCase);
+            });
+        }
 
         this._blockServer(resource, testCase);
 
@@ -159,7 +155,7 @@ export default class MyTest extends Test {
             testCase.addMissCheck();
         } else {
             // Expect one miss and at least one revalidation transaction.
-            testCase.server().onSubsequentTransaction((x) => {
+            testCase.server().onSubsequentTransaction(() => {
                 // Nothing special to configure: If all goes according to the
                 // test plan, Daft generates a 304 response automatically.
                 // TODO: Add testCase.server().expectMultipleTransactions()?
