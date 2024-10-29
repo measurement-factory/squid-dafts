@@ -2,14 +2,14 @@
 // Copyright (C) The Measurement Factory.
 // http://www.measurement-factory.com/
 
-// Tests whether worker A attempts to revalidate an HTTP response that is
-// being received from worker B (because worker A request was collapsed).
-// Revalidation is _not_ expected:
-// * Revalidation is not expected in soTrueCollapsing cases (despite Squid
-//   being tempted to revalidate) because Squid should treat responses to
-//   collapsed requests as fresh.
-// * Revalidation is not expected in soLiveFeeding and soPureHits cases
-//   because we do not tempt Squid to revalidate in those cases.
+// Tests whether worker A attempts to revalidate an HTTP response that was (or
+// is being) received by worker B.
+// * Revalidation is _not_ expected in soTrueCollapsing cases (despite hit
+//   requests asking Squid to revalidate stale responses) because Squid should
+//   treat responses to collapsed requests as fresh:
+//   https://lists.w3.org/Archives/Public/ietf-http-wg/2024JanMar/0095.html
+// * Revalidation is expected in soLiveFeeding and soPureHits cases (because
+//   hit requests ask Squid to revalidate fresh responses).
 
 import * as AddressPool from "../src/misc/AddressPool";
 import * as Config from "../src/misc/Config";
@@ -64,6 +64,7 @@ export default class MyTest extends Test {
         cfg.workers(Config.workers());
         cfg.dedicatedWorkerPorts(Config.workers() > 1);
         this._workerListeningAddresses = cfg.workerListeningAddresses();
+        // TODO: Allow/test collapsed revalidation of non-collapsed hits.
         cfg.collapsedForwarding(Config.sendingOrder() === soTrueCollapsing);
     }
 
@@ -115,54 +116,59 @@ export default class MyTest extends Test {
         resource.finalize();
 
         const testCase = new HttpTestCase(`cache a response and collapse on the miss request`);
+        testCase.server().serve(resource);
+
         const missClient = testCase.client();
         {
             missClient.request.for(resource);
             missClient.nextHopAddress = this._workerListeningAddressFor(1);
-
-            testCase.server().serve(resource);
-
-            testCase.check(() => {
-                missClient.expectStatusCode(200);
-            });
         }
 
+        // add client(s) to worker(s); they should all collapse on missClient
+        for (let worker = 1; worker <= Config.workers(); ++worker) {
         testCase.makeClients(1, (hitClient) => {
             hitClient.request.for(resource);
-            hitClient.nextHopAddress = this._workerListeningAddressFor(2);
+            hitClient.nextHopAddress = this._workerListeningAddressFor(worker);
 
-            // tempt Squid to needlessly revalidate (where possible)
-            if (Config.sendingOrder() === soTrueCollapsing)
-                hitClient.request.header.add("Cache-Control", "max-age=0");
+            // Tempt Squid to revalidate (when Squid should not revalidate).
+            // Trigger Squid revalidation (when revalidation should happen).
+            hitClient.request.header.add("Cache-Control", "max-age=0");
 
             this._blockClient(hitClient, missClient, testCase);
-            testCase.check(() => {
-                hitClient.expectStatusCode(200);
-                if (testCase.server().transactionsStarted() === 1)
-                    hitClient.expectResponse(testCase.server().transaction().response);
-                // else we cannot use hitClient.expectResponse() because 200
-                // response received by hitClient was updated by origin 304
-                // response; we lack functions that check for such updates.
-                // TODO: Check body forwarding (at least)!
-            });
         });
+        } // TODO: Reformat
 
         this._blockServer(resource, testCase);
 
-        // Expect up to 2 transactions: miss and revalidation. Revalidation
-        // happens in non-collapsed cases and in older Squids that validate
-        // responses to collapsed requests.
-        testCase.server().onSubsequentTransaction((x) => {
-            // Nothing special to configure: If all goes according to the test
-            // plan, Daft will generate a 304 response automatically.
-            // TODO: Add testCase.server().expectMultipleTransactions() or
-            // adjust testCase.server().keepListening(true) effects?
+        testCase.check(() => {
+            testCase.expectStatusCode(200);
+
+            // In this check context, transactions are Squid-server transactions:
+            const transactionsStarted = testCase.server().transactionsStarted();
+            if (Config.sendingOrder() === soTrueCollapsing) {
+                assert.strictEqual(transactionsStarted, 1); // server only accepts one transaction
+            } else {
+                // one initial miss + one revalidation per worker hit
+                const transactionsExpected = 1 + Config.workers();
+                if (transactionsStarted !== transactionsExpected)
+                    throw new Error(`Unexpected number of proxy-server transactions: ${transactionsStarted} instead of ${transactionsExpected}`);
+            }
         });
 
-        if (Config.sendingOrder() === soTrueCollapsing)
+        if (Config.sendingOrder() === soTrueCollapsing) {
             testCase.addMissCheck();
-        // else revalidation changes X-Daft-Request-ID response header value,
-        // resulting in addMissCheck() failure; TODO: Check forwarding somehow
+        } else {
+            // Expect one miss and at least one revalidation transaction.
+            testCase.server().onSubsequentTransaction((x) => {
+                // Nothing special to configure: If all goes according to the
+                // test plan, Daft generates a 304 response automatically.
+                // TODO: Add testCase.server().expectMultipleTransactions()?
+            });
+
+            // Revalidation changes X-Daft-Request-ID response header value,
+            // resulting in addMissCheck() failure; TODO: Check forwarding.
+        }
+
 
         await testCase.run();
 
