@@ -15,6 +15,7 @@ import * as AddressPool from "../src/misc/AddressPool";
 import * as Config from "../src/misc/Config";
 import * as ConfigurationGenerator from "../src/test/ConfigGen";
 import * as FuzzyTime from "../src/misc/FuzzyTime";
+import * as Http from "../src/http/Gadgets";
 import HttpTestCase from "../src/test/HttpCase";
 import Resource from "../src/anyp/Resource";
 import Test from "../src/overlord/Test";
@@ -131,6 +132,24 @@ export default class MyTest extends Test {
                 hitClient.request.header.add("Cache-Control", "max-age=0");
 
                 this._blockClient(hitClient, missClient, testCase);
+
+                if (Config.sendingOrder() !== soTrueCollapsing) {
+                    hitClient.checks.add(() => {
+                        // XXX: This is the last 304 response sent. It is
+                        // usually not the response sent while responding to
+                        // this hitClient revalidation request. TODO: Instead
+                        // of filtering, remember all Server transactions and
+                        // find the right one by matching X-Daft-Request-ID.
+                        const response304 = this._filterResponseForHitValidationXXX(testCase.server().transaction().response);
+                        const missResponse = this._filterResponseForHitValidationXXX(missClient.transaction().response);
+                        Http.AssertRefreshHit(
+                            missResponse,
+                            response304,
+                            hitClient.transaction().response
+                        );
+                    });
+                }
+                // else we testCase.addMissCheck() once, further below
             });
         }
 
@@ -161,10 +180,8 @@ export default class MyTest extends Test {
                 // TODO: Add testCase.server().expectMultipleTransactions()?
             });
 
-            // Revalidation changes X-Daft-Request-ID response header value,
-            // resulting in addMissCheck() failure; TODO: Check forwarding.
+            // forwarding/revalidation checks were added when creating hitClients
         }
-
 
         await testCase.run();
 
@@ -254,6 +271,15 @@ export default class MyTest extends Test {
         assert(offset >= 0);
         assert(offset < this._workerListeningAddresses.length);
         return this._workerListeningAddresses[offset];
+    }
+
+    _filterResponseForHitValidationXXX(responseIn) {
+        const responseOut = responseIn.clone();
+        // XXX: Has to be in sync with Http::Message::_daftFieldName().
+        responseOut.header.deleteAllNamed(Http.DaftFieldName("Request-ID"));
+        responseOut.header.deleteAllNamed(Http.DaftFieldName("Response-ID"));
+        responseOut.header.deleteAllNamed("Date");
+        return responseOut;
     }
 }
 
