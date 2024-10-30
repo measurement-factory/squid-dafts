@@ -170,6 +170,19 @@ export default class MyTest extends Test {
             }
         });
 
+        testCase.check(async () => {
+            const accessRecords = await this.dut.getNewAccessRecords();
+
+            // no errors; this rejects "successful recovery" cases like
+            // %Ss=TCP_CF_REFRESH_FAIL_OLD with %err_code=ERR_CONNECT_FAIL
+            accessRecords.all().forEach(record => {
+                record.checkUnknown('%err_code');
+                record.checkUnknown('%err_detail');
+            });
+
+            // TODO: Validate records further by matching them to client transactions.
+        });
+
         if (Config.sendingOrder() === soTrueCollapsing) {
             testCase.addMissCheck();
         } else {
