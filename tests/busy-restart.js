@@ -6,30 +6,55 @@
 
 import * as AddressPool from "../src/misc/AddressPool";
 import * as Config from "../src/misc/Config";
+import * as ConfigurationGenerator from "../src/test/ConfigGen";
 import * as Http from "../src/http/Gadgets";
-import ConfigGen from "../src/test/ConfigGen";
 import HttpTestCase from "../src/test/HttpCase";
 import Resource from "../src/anyp/Resource";
 import Test from "../src/overlord/Test";
 
 import assert from "assert";
 
+const reRestart = "restart";
+const reReconfigure = "reconfigure";
+
+Config.Recognize([
+    {
+        option: "dut-refresh-mode",
+        type: "String",
+        enum: [reRestart, reReconfigure],
+        default: reRestart,
+        description: "how to refresh Squid in the middle of a test\n" +
+            `\t${reRestart} (stop Squid instance and start again; once)\n`+
+            `\t${reReconfigure} (send SIGHUP, like "squid -k reconfigure" would; several times\n`,
+    },
+]);
+
 export default class MyTest extends Test {
 
     static Configurators() {
-        const configGen = new ConfigGen();
+        const configGen = new ConfigurationGenerator.FlexibleConfigGen();
 
-        configGen.addGlobalConfigVariation({bodySize: [
-            0,
-            Config.DefaultBodySize(),
-            Config.LargeBodySize(),
-        ]});
+        configGen.bodySize(function *() {
+            yield 0;
+            yield Config.DefaultBodySize();
+            yield Config.LargeBodySize();
+        });
 
-        configGen.addGlobalConfigVariation({dutShutdownManner: [
-            'gracefully',
-            'urgently',
-            'immediately',
-        ]});
+        configGen.dutRefreshMode(function *() {
+            yield reRestart;
+            yield reReconfigure;
+        });
+
+        configGen.dutShutdownManner(function *(cfg) {
+            // these shutdown "manners" may be interesting in all refreshMode()s
+            yield 'gracefully';
+            yield 'urgently';
+
+            // uncatchable SIGKILL can only create problems for Squid if Squid
+            // is restarted afterwords
+            if (cfg.dutRefreshMode() === reRestart)
+                yield 'immediately';
+        });
 
         return configGen.generateConfigurators();
     }
@@ -57,7 +82,12 @@ export default class MyTest extends Test {
         const keptBusy = this._keepProxyBusy();
         const keptValid = this._keepValidatingProxyCache();
 
-        await this.dut.restart();
+        if (Config.dutRefreshMode() === reRestart) {
+            await this.dut.restart();
+        } else {
+            for (let reconfigurations = 0; reconfigurations < 5; ++reconfigurations)
+                await this.dut.reconfigure();
+        }
         this._restarted = true;
 
         await keptBusy;
