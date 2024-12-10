@@ -9,12 +9,12 @@ import assert from "assert";
 
 import * as AddressPool from "../src/misc/AddressPool";
 import * as Config from "../src/misc/Config";
+import * as Gadgets from "../src/misc/Gadgets";
 import * as Http from "../src/http/Gadgets";
 import ConfigGen from "../src/test/ConfigGen";
 import HttpTestCase from "../src/test/HttpCase";
 import Resource from "../src/anyp/Resource";
 import Test from "../src/overlord/Test";
-import { Must } from "../src/misc/Gadgets";
 
 // Compute syntax specification for the --collapsed-requests option.
 // The WorkerLimit is only needed to keep --help output reasonable.
@@ -127,7 +127,7 @@ export default class MyTest extends Test {
     async run(/*testRun*/) {
 
         // TODO: Zero workers should mean non-SMP mode.
-        Must(Config.Workers >= 1);
+        assert(Config.Workers >= 1);
 
         // convert Config.CollapsedRequests (which may not specify some
         // workers and/or have an "each" macro) into collapsedRequestsForWorker
@@ -175,11 +175,14 @@ export default class MyTest extends Test {
         }
 
         // add clients for each worker; they should all collapse on missClient
+        let previousHitClient = null;
         for (let worker = 1; worker <= Config.Workers; ++worker) {
             testCase.makeClients(collapsedRequestsForWorker[worker], (hitClient) => {
                 hitClient.request.for(resource);
                 hitClient.nextHopAddress = this._workerListeningAddresses[worker];
-                this._blockClient(hitClient, missClient, testCase);
+                this._blockClient(hitClient, missClient, testCase, previousHitClient);
+                previousHitClient = hitClient;
+
                 if (expect503s) {
                     hitClient.checks.add(client => {
                         const scode = client.transaction().response.startLine.codeInteger();
@@ -230,7 +233,20 @@ export default class MyTest extends Test {
         AddressPool.ReleaseListeningAddress(resource.uri.address);
     }
 
-    _blockClient(hitClient, missClient, testCase) {
+    _blockClient(hitClient, missClient, testCase, previousHitClient) {
+        if (previousHitClient) {
+            // Re sleep: From asynchronous sender point of view, sending of
+            // small requests looks nearly instantaneous, probably because
+            // request bytes just get copied into the socket buffer. In hope
+            // to trigger an actual network write, we sleep. If that is not
+            // enough, we can even require that previousHitClient request is
+            // "staged" at the proxy: see finishStagingRequests().
+            hitClient.transaction().blockSendingUntil(
+                previousHitClient.transaction().sentEverything()
+                .then(async () => await Gadgets.SleepMs(10)),
+                "wait for the previous hit request to be sent to the proxy");
+        }
+
         if (Config.SendingOrder === soTrueCollapsing) {
             // technically, reaching the proxy is enough, but we cannot detect/wait for that
             hitClient.transaction().blockSendingUntil(
