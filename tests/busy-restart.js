@@ -16,6 +16,9 @@ import assert from "assert";
 
 const reRestart = "restart";
 const reReconfigure = "reconfigure";
+const reHarsh = "harsh";
+const reSmooth = "smooth";
+const reSmoothOrHarsh = "smooth-or-harsh";
 
 Config.Recognize([
     {
@@ -27,7 +30,22 @@ Config.Recognize([
             `\t${reRestart} (stop Squid instance and start again; once)\n`+
             `\t${reReconfigure} (send SIGHUP, like "squid -k reconfigure" would; several times\n`,
     },
+    {
+        option: "dut-reconfiguration-mode",
+        type: "String",
+        enum: [reHarsh, reSmooth, reSmoothOrHarsh],
+        default: reHarsh,
+        description: `Squid 'reconfigure' directive setting (${reHarsh}, ${reSmooth}, ${reSmoothOrHarsh})\n` +
+            `\tThis option requires --dut-refresh-mode set to ${reReconfigure}\n`,
+    },
 ]);
+
+/// whether transactions concurrent with instance refreshing events may fail
+function ToleratingErrors()
+{
+    // for reSmoothOrHarsh, we currently assume that Squid will ultimately reconfigure in reSmooth mode
+    return Config.dutRefreshMode() === reRestart || Config.dutRefreshMode() === reHarsh;
+}
 
 export default class MyTest extends Test {
 
@@ -43,6 +61,14 @@ export default class MyTest extends Test {
         configGen.dutRefreshMode(function *() {
             yield reRestart;
             yield reReconfigure;
+        });
+
+        configGen.dutReconfigurationMode(function *(cfg) {
+            if (cfg.dutRefreshMode() === reReconfigure) {
+                yield reHarsh;
+                yield reSmooth;
+                yield reSmoothOrHarsh;
+            }
         });
 
         configGen.dutShutdownManner(function *(cfg) {
@@ -69,6 +95,9 @@ export default class MyTest extends Test {
         cfg.memoryCaching(false); // TODO: Make Configurable.
         cfg.diskCaching(true); // TODO: Make Configurable.
         // TODO: Test with a very small cache_dir as well.
+
+        if (Config.dutRefreshMode() === reReconfigure)
+            cfg.custom(`reconfiguration ${Config.dutReconfigurationMode()}`);
     }
 
     async run(/*testRun*/) {
@@ -121,6 +150,8 @@ export default class MyTest extends Test {
                     console.log("will report future optional transaction errors");
                 sequentialErrors = 0;
             } catch (error) {
+                if (!ToleratingErrors())
+                    throw error;
                 ++sequentialErrors;
                 if (sequentialErrors <= sequentialErrorsToReportMax) {
                     console.log("ignoring optional transaction error:", error);
@@ -132,8 +163,8 @@ export default class MyTest extends Test {
     }
 
     // cache a single response (without validation)
-    async _cacheOne(expectSuccess) {
-        if (expectSuccess) {
+    async _cacheOne(runningSolo) {
+        if (runningSolo) {
             // make sure any winding down swapouts from previous concurrent
             // transactions do not interfere with our ability to cache
             await this.dut.finishCaching();
@@ -144,15 +175,15 @@ export default class MyTest extends Test {
         resource.makeCachable();
         resource.finalize();
 
-        const missHow = expectSuccess ? "definitely" : "maybe";
+        const missHow = runningSolo ? "definitely" : "maybe";
         const missCase = new HttpTestCase(`${missHow} cache a response`);
         missCase.server().serve(resource);
         missCase.client().request.for(resource);
-        if (expectSuccess)
+        if (runningSolo || !ToleratingErrors())
             missCase.addMissCheck();
         await missCase.run();
 
-        if (expectSuccess) {
+        if (runningSolo) {
             // successful caching includes making sure our miss swapout ends
             await this.dut.finishCaching();
 
@@ -163,12 +194,22 @@ export default class MyTest extends Test {
 
 
     // validate that the last cached resource, if still cached, is not
-    // corrupted and, optionally, that it is still cached
-    async _validateOne(requireHit) {
+    // corrupted and, in certain cases, that it is still cached
+    async _validateOne(runningSolo) {
         assert(this._lastCachedResource);
         assert(this._lastCachedResponse);
 
-        const hitHow = requireHit ? "definitely" : "maybe";
+        // There are two classes of allowed problems: I/O errors and misses.
+        // * We may see I/O errors during restarts or harsh reconfiguration.
+        const tolerateIoErrors = !runningSolo && ToleratingErrors();
+        // * We may miss unless runningSolo: During smooth reconfiguration, we
+        //   do not tolerate I/O errors, but we still cannot require a hit for
+        //   our background _validateOne() transactions because concurrent
+        //   background _cacheOne() transactions may purge old
+        //   this._lastCachedResponse that our transactions are hitting.
+        const tolerateMisses = !runningSolo;
+
+        const hitHow = runningSolo ? "definitely" : "maybe";
         const hitCase = new HttpTestCase(`${hitHow} hit a cached response`);
         hitCase.client().request.for(this._lastCachedResource);
         hitCase.client().request.header.add("Cache-Control", "only-if-cached");
@@ -177,28 +218,41 @@ export default class MyTest extends Test {
             const context = client.context;
             const retrieved = client.transaction().response;
 
-            if (!requireHit) {
-                if (!retrieved || !retrieved.startLine) {
+            if (!runningSolo) {
+                // tolerateMisses conditions here are guaranteed to be true,
+                // but we spell them out anyway to distinguish classes of
+                // allowed problems as documented when setting tolerateMisses.
+                assert(tolerateMisses);
+
+                if (tolerateIoErrors && (!retrieved || !retrieved.startLine)) {
                     context.log("no hit validation due to the lack of a valid response");
                     return;
                 }
 
                 const scode = retrieved.startLine.codeInteger();
-                if (scode === undefined) {
+                if (tolerateIoErrors && scode === undefined) {
                     context.log("no hit validation due to the lack of a valid response status code");
                     return;
                 }
-                if (scode !== 200) {
+                if (tolerateMisses && scode !== 200) {
+                    // If may miss, our only-if-cached request may cause a non-200 response.
                     context.log("no hit validation due to response status code:", scode);
                     return;
                 }
 
                 const nameRfr = Http.DaftFieldName("Response-From-Resource");
-                if (!this._lastCachedResponse.header.has(nameRfr)) {
+                if (tolerateMisses && !this._lastCachedResponse.header.has(nameRfr)) {
                     context.log("no hit validation due to missing header:", nameRfr);
                     return;
                 }
 
+                // XXX: What does "earlier" mean?! Resource paths are (or, to
+                // be more precise, should be assumed to be) unique! Every
+                // _cacheOne() creates a new Resource. We request
+                // this._lastCachedResource that call created at some point.
+                // This response must have the same resource ID. TODO: Delete
+                // or re-explain the excuse/code below!
+                //
                 // we cannot get a 200 OK cache miss because hitCase has no
                 // server, but we can get a response that was cached earlier
                 const receivedResourceId = retrieved.header.value(nameRfr);
@@ -210,7 +264,7 @@ export default class MyTest extends Test {
 
                 const cached = this._lastCachedResponse;
                 assert.equal(!retrieved.body, !cached.body);
-                if (cached.body && cached.body.whole().length > retrieved.body.whole().length) {
+                if (tolerateIoErrors && cached.body && cached.body.whole().length > retrieved.body.whole().length) {
                     context.log("no hit validation due to response truncation; cached",
                         cached.body.whole().length, "but got", retrieved.body.whole().length);
                     return;
