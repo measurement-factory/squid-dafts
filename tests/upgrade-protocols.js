@@ -372,19 +372,21 @@ class TestConfig {
 
         // Single case: An Upgrade header listing the specified protocols.
         // no support for empty protocols as in "foo,,bar", ",foo", or "bar,"
-        return [ TestConfig.ParseUpgradeValue(requestedCfg) ];
+        return [ TestConfig.ParseUpgradeSpec(requestedCfg) ];
     }
 
-    // parse a comma-separated value list
-    static ParseUpgradeValue(value) {
+    // parse a comma-separated #protocol list that may include empty entries
+    static ParseUpgradeSpec(value) {
         return value.trim().split(/(?:\s*,\s*)+/).filter(v => v.length).map(gist => new Protocol(gist));
     }
 
-    // parse an array of comma-separated value lists
+    // parse an array of (possibly empty) values
     static ParseUpgradeValues(values) {
         let protos = [];
         for (let value of values) {
-            const fieldProtos = TestConfig.ParseUpgradeValue(value);
+            // here, the value should not contain commas, but we still reuse
+            // ParseUpgradeSpec() for its empty value handling
+            const fieldProtos = TestConfig.ParseUpgradeSpec(value);
             protos = protos.concat(fieldProtos);
         }
         return protos;

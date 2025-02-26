@@ -108,8 +108,8 @@ export default class MyTest extends Test {
                 const receivedResponse = testCase.client().transaction().response;
                 assert.equal(updatingResponse.tag(), receivedResponse.tag(), "relayed X-Daft-Response-Tag");
                 assert.equal(updatingResponse.id(), receivedResponse.id(), "relayed X-Daft-Response-ID");
-                assert.equal(receivedResponse.header.values("Last-Modified"), resource.lastModificationTime.toUTCString(), "relayed Last-Modified");
-                assert.equal(receivedResponse.header.values("Expires"), resource.nextModificationTime.toUTCString(), "relayed Expires");
+                assert.equal(receivedResponse.header.value("Last-Modified"), resource.lastModificationTime.toUTCString(), "relayed Last-Modified");
+                assert.equal(receivedResponse.header.value("Expires"), resource.nextModificationTime.toUTCString(), "relayed Expires");
                 assert.equal(receivedResponse.header.value(hitCheck.name), hitCheck.value, "preserved originally cached header field");
             });
 
@@ -127,8 +127,8 @@ export default class MyTest extends Test {
                 let updatedResponse = client.transaction().response;
                 assert.equal(updatedResponse.tag(), updatingResponse.tag(), "updated X-Daft-Response-Tag");
                 assert.equal(updatedResponse.id(), updatingResponse.id(), "updated X-Daft-Response-ID");
-                assert.equal(updatedResponse.header.values("Last-Modified"), resource.lastModificationTime.toUTCString(), "updated Last-Modified");
-                assert.equal(updatedResponse.header.values("Expires"), resource.nextModificationTime.toUTCString(), "updated Expires");
+                assert.equal(updatedResponse.header.value("Last-Modified"), resource.lastModificationTime.toUTCString(), "updated Last-Modified");
+                assert.equal(updatedResponse.header.value("Expires"), resource.nextModificationTime.toUTCString(), "updated Expires");
                 assert.equal(updatedResponse.header.value(hitCheck.name), hitCheck.value, "preserved originally cached header field");
             });
 
