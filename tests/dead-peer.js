@@ -151,8 +151,6 @@ export default class MyTest extends Test {
         this.dut.cachePeers().forEach(cachePeer => {
             cachePeer.resetTransaction();
             cachePeer.response.startLine.code(503);
-            cachePeer.response.header.add("Via",
-                `1.1 ${cachePeer.context.id} (Daft-cache_peer)`);
         });
     }
 
