@@ -86,7 +86,7 @@ export default class MyTest extends Test {
             await this.dut.restart();
         } else {
             for (let reconfigurations = 0; reconfigurations < 5; ++reconfigurations)
-                await this.dut.reconfigure();
+                await this.dut.reconfigureWithoutChanges(false);
         }
         this._restarted = true;
 
