@@ -84,6 +84,7 @@ export default class MyTest extends Test {
             });
 
             await testCase.run();
+            await this.dut.finishCaching();
         }
 
         let updatingResponse = null; // TBD
@@ -114,6 +115,9 @@ export default class MyTest extends Test {
             });
 
             await testCase.run();
+            // XXX: this.dut.finishCaching() does not see prefix-updating disk I/O
+            // await this.dut.finishCaching();
+            await Gadgets.SleepMs(2000);
         }
 
         {
