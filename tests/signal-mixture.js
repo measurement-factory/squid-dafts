@@ -37,9 +37,9 @@ export default class MyTest extends Test {
             yield 4;
         });
 
+        // TODO: add true when testing Squid supporting smooth reconfiguration
         configGen.smoothReconfiguration(function *() {
             yield false;
-            yield true;
         });
 
         configGen.signalList(function *() {
@@ -61,6 +61,7 @@ export default class MyTest extends Test {
         cfg.workers(Config.workers());
         cfg.memoryCaching(true);
         cfg.diskCaching(false);
+        cfg.custom("debug_options 1,2");
         if (Config.smoothReconfiguration())
             cfg.custom("reconfiguration smooth");
         this._workerListeningAddresses = cfg.workerListeningAddresses();
@@ -69,7 +70,7 @@ export default class MyTest extends Test {
     _expectedReconfigurationsMin() {
         if (this._signals.includes("HUP"))
             return 0;
-        return (Config.workers() === 1) ? 1 : Config.workers() + 1; // workers plus coordinator, no diskers
+        return (Config.workers() === 1) ? 1 : Config.workers() + 1;
     }
 
     _expectedReconfigurationsMax() {
