@@ -22,11 +22,11 @@ export default class MyTest extends Test {
         const openCase = new HttpTestCase('create a proxy-server pconn');
         openCase.client().request.for(resource);
         openCase.server().serve(resource);
-        // TODO: This should be a standard, HTTP version-sensitive method
-        openCase.server().response.header.add("Connection", "keep-alive");
-        assert(openCase.server().response.persistent());
         openCase.server().keepConnections();
         openCase.addMissCheck();
+        openCase.server().checks.add((server) => {
+            assert(server.transaction().response.persistent());
+        });
         await openCase.run();
 
         const reuseCase = new HttpTestCase('reuse a proxy-server pconn');
@@ -34,6 +34,9 @@ export default class MyTest extends Test {
         reuseCase.server().serve(resource);
         reuseCase.server().reuseConnectionsFrom(openCase.server());
         reuseCase.addMissCheck();
+        reuseCase.server().checks.add((server) => {
+            assert.strictEqual(server.transaction().reusedTransportConnection(), true);
+        });
         await reuseCase.run();
     }
 }
