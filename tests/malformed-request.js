@@ -14,12 +14,6 @@ import Test from "../src/overlord/Test";
 
 export default class MyTest extends Test {
 
-    constructor() {
-        super(...arguments);
-
-        this._lastAccessRecord = null; // cached by check() in _configureTestCase()
-    }
-
     async testHugeUrl() {
         const testCase = new HttpTestCase('huge URL');
         this._configureTestCase(testCase);
@@ -29,9 +23,10 @@ export default class MyTest extends Test {
 
         testCase.check(() => {
             testCase.expectStatusCode(414);
-            this._lastAccessRecord.checkEqual('%>Hs', '414');
-            this._lastAccessRecord.checkEqual('%err_code', 'ERR_TOO_BIG');
-            this._lastAccessRecord.checkUnknown('%err_detail');
+            const accessRecord = testCase.accessRecords().single();
+            accessRecord.checkEqual('%>Hs', '414');
+            accessRecord.checkEqual('%err_code', 'ERR_TOO_BIG');
+            accessRecord.checkUnknown('%err_detail');
         });
 
         await testCase.run();
@@ -45,9 +40,10 @@ export default class MyTest extends Test {
 
         testCase.check(() => {
             testCase.expectStatusCode(405);
-            this._lastAccessRecord.checkEqual('%>Hs', '405');
-            this._lastAccessRecord.checkEqual('%err_code', 'ERR_UNSUP_REQ');
-            this._lastAccessRecord.checkUnknown('%err_detail');
+            const accessRecord = testCase.accessRecords().single();
+            accessRecord.checkEqual('%>Hs', '405');
+            accessRecord.checkEqual('%err_code', 'ERR_UNSUP_REQ');
+            accessRecord.checkUnknown('%err_detail');
         });
 
         await testCase.run();
@@ -62,9 +58,10 @@ export default class MyTest extends Test {
 
         testCase.check(() => {
             testCase.expectStatusCode(400);
-            this._lastAccessRecord.checkEqual('%>Hs', '400');
-            this._lastAccessRecord.checkEqual('%err_code', 'ERR_PROTOCOL_UNKNOWN');
-            this._lastAccessRecord.checkUnknown('%err_detail');
+            const accessRecord = testCase.accessRecords().single();
+            accessRecord.checkEqual('%>Hs', '400');
+            accessRecord.checkEqual('%err_code', 'ERR_PROTOCOL_UNKNOWN');
+            accessRecord.checkUnknown('%err_detail');
         });
 
         await testCase.run();
@@ -78,9 +75,10 @@ export default class MyTest extends Test {
 
         testCase.check(() => {
             testCase.expectStatusCode(505);
-            this._lastAccessRecord.checkEqual('%>Hs', '505');
-            this._lastAccessRecord.checkEqual('%err_code', 'ERR_UNSUP_HTTPVERSION');
-            this._lastAccessRecord.checkUnknown('%err_detail');
+            const accessRecord = testCase.accessRecords().single();
+            accessRecord.checkEqual('%>Hs', '505');
+            accessRecord.checkEqual('%err_code', 'ERR_UNSUP_HTTPVERSION');
+            accessRecord.checkUnknown('%err_detail');
         });
 
         await testCase.run();
@@ -94,9 +92,10 @@ export default class MyTest extends Test {
 
         testCase.check(() => {
             testCase.expectStatusCode(505);
-            this._lastAccessRecord.checkEqual('%>Hs', '505');
-            this._lastAccessRecord.checkEqual('%err_code', 'ERR_UNSUP_HTTPVERSION');
-            this._lastAccessRecord.checkUnknown('%err_detail');
+            const accessRecord = testCase.accessRecords().single();
+            accessRecord.checkEqual('%>Hs', '505');
+            accessRecord.checkEqual('%err_code', 'ERR_UNSUP_HTTPVERSION');
+            accessRecord.checkUnknown('%err_detail');
         });
 
         await testCase.run();
@@ -114,9 +113,10 @@ export default class MyTest extends Test {
 
         testCase.check(() => {
             testCase.expectStatusCode(400);
-            this._lastAccessRecord.checkEqual('%>Hs', '400');
-            this._lastAccessRecord.checkEqual('%err_code', 'ERR_INVALID_URL');
-            this._lastAccessRecord.checkUnknown('%err_detail');
+            const accessRecord = testCase.accessRecords().single();
+            accessRecord.checkEqual('%>Hs', '400');
+            accessRecord.checkEqual('%err_code', 'ERR_INVALID_URL');
+            accessRecord.checkUnknown('%err_detail');
         });
 
         await testCase.run();
@@ -124,16 +124,15 @@ export default class MyTest extends Test {
 
     // HttpTestCase configuration shared among all test cases
     _configureTestCase(testCase) {
-        testCase.check(async () => {
+        testCase.expectAccessRecordChecks(this.dut);
 
-            const accessRecords = await this.dut.getNewAccessRecords();
-            const accessRecord = accessRecords.single();
+        testCase.check(() => {
+            const accessRecord = testCase.accessRecords().single();
             // TODO: When Squid logs these correctly
             // accessRecord.checkEqual('%Ss', 'TCP_...');
             // accessRecord.checkEqual('%rm', ...);
             accessRecord.checkUnknown('%<a');
             accessRecord.checkEqual('%Sh', 'HIER_NONE');
-            this._lastAccessRecord = accessRecord;
         });
     }
 

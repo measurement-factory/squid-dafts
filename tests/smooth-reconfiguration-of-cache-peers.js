@@ -24,12 +24,6 @@ export default class MyTest extends Test {
         return configGen.generateConfigurators();
     }
 
-    constructor() {
-        super(...arguments);
-
-        this._lastAccessRecord = null; // cached by check() in _makeTestCase()
-    }
-
     _configureDut(cfg) {
         assert(cfg.cachePeers().length >= 2);
         const cachePeerA = cfg.cachePeers()[0];
@@ -62,37 +56,39 @@ export default class MyTest extends Test {
 
         cachePeerToTarget.config().attract(testCase.client().request);
 
-        testCase.check(async () => {
-            const accessRecords = await this.dut.getNewAccessRecords();
-            const accessRecord = accessRecords.single();
+        testCase.expectAccessRecordChecks(this.dut);
+
+        testCase.check(() => {
+            const accessRecord = testCase.accessRecords().single();
             accessRecord.checkEqual('%rm', requestMethod);
             accessRecord.checkKnown('%>a');
-            this._lastAccessRecord = accessRecord;
         });
 
         if (cachePeerToTarget.config().hidden()) {
-            testCase.check(async () => {
+            testCase.check(() => {
                 testCase.expectStatusCode(502);
 
-                this._lastAccessRecord.checkEqual('%err_code', 'ERR_READ_ERROR');
-                this._lastAccessRecord.checkKnown('%err_detail');
-                this._lastAccessRecord.checkUnknown('%<Hs');
-                this._lastAccessRecord.checkEqual('%>Hs', '502');
-                this._lastAccessRecord.checkEqual('%Sh', 'HIER_NONE');
-                this._lastAccessRecord.checkUnknown('%<a');
+                const accessRecord = testCase.accessRecords().single();
+                accessRecord.checkEqual('%err_code', 'ERR_READ_ERROR');
+                accessRecord.checkKnown('%err_detail');
+                accessRecord.checkUnknown('%<Hs');
+                accessRecord.checkEqual('%>Hs', '502');
+                accessRecord.checkEqual('%Sh', 'HIER_NONE');
+                accessRecord.checkUnknown('%<a');
             });
         } else {
-            testCase.check(async () => {
+            testCase.check(() => {
                 testCase.expectStatusCode(200);
                 testCase.client().transaction().response.header.expectFieldValueAmongOthers(cachePeerThatShouldReceiveRequest.response.header.has("Via"));
 
-                this._lastAccessRecord.checkUnknown('%err_code');
-                this._lastAccessRecord.checkUnknown('%err_detail');
-                this._lastAccessRecord.checkEqual('%>Hs', '200');
-                this._lastAccessRecord.checkEqual('%<Hs', '200');
-                this._lastAccessRecord.checkEqual('%Ss', 'TCP_MISS');
-                this._lastAccessRecord.checkEqual('%Sh', 'FIRSTUP_PARENT');
-                this._lastAccessRecord.checkKnown('%<a');
+                const accessRecord = testCase.accessRecords().single();
+                accessRecord.checkUnknown('%err_code');
+                accessRecord.checkUnknown('%err_detail');
+                accessRecord.checkEqual('%>Hs', '200');
+                accessRecord.checkEqual('%<Hs', '200');
+                accessRecord.checkEqual('%Ss', 'TCP_MISS');
+                accessRecord.checkEqual('%Sh', 'FIRSTUP_PARENT');
+                accessRecord.checkKnown('%<a');
             });
         }
 

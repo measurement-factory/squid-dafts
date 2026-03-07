@@ -27,20 +27,15 @@ export default class MyTest extends Test {
         return configGen.generateConfigurators();
     }
 
-    constructor() {
-        super(...arguments);
-
-        this._lastAccessRecord = null; // cached by check() in _makeTestCase()
-    }
-
     async testGetDirectlyToBadOrigin() {
         const testCase = this._makeTestCase('GET', 'directly to a non-listening origin');
 
         testCase.check(() => {
-            this._lastAccessRecord.checkEqual('%err_code', 'ERR_CONNECT_FAIL');
-            this._lastAccessRecord.checkEqual('%err_detail', 'WITH_SERVER+errno=111');
-            this._lastAccessRecord.checkEqual('%Ss', 'TCP_MISS_ABORTED');
-            this._lastAccessRecord.checkEqual('%Sh', 'HIER_DIRECT');
+            const accessRecord = testCase.accessRecords().single();
+            accessRecord.checkEqual('%err_code', 'ERR_CONNECT_FAIL');
+            accessRecord.checkEqual('%err_detail', 'WITH_SERVER+errno=111');
+            accessRecord.checkEqual('%Ss', 'TCP_MISS_ABORTED');
+            accessRecord.checkEqual('%Sh', 'HIER_DIRECT');
         });
 
         await testCase.run();
@@ -50,10 +45,11 @@ export default class MyTest extends Test {
         const testCase = this._makeTestCase('CONNECT', 'directly to a non-listening origin');
 
         testCase.check(() => {
-            this._lastAccessRecord.checkEqual('%err_code', 'ERR_CONNECT_FAIL');
-            this._lastAccessRecord.checkEqual('%err_detail', 'errno=111');
-            this._lastAccessRecord.checkEqual('%Ss', 'TCP_TUNNEL');
-            this._lastAccessRecord.checkEqual('%Sh', 'HIER_DIRECT');
+            const accessRecord = testCase.accessRecords().single();
+            accessRecord.checkEqual('%err_code', 'ERR_CONNECT_FAIL');
+            accessRecord.checkEqual('%err_detail', 'errno=111');
+            accessRecord.checkEqual('%Ss', 'TCP_TUNNEL');
+            accessRecord.checkEqual('%Sh', 'HIER_DIRECT');
         });
 
         await testCase.run();
@@ -65,10 +61,11 @@ export default class MyTest extends Test {
         this._configureCachePeersTalkingToBadOrigin();
 
         testCase.check(() => {
-            this._lastAccessRecord.checkUnknown('%err_code');
-            this._lastAccessRecord.checkUnknown('%err_detail');
-            this._lastAccessRecord.checkEqual('%Ss', 'TCP_MISS');
-            this._lastAccessRecord.checkEqual('%Sh', 'FIRSTUP_PARENT');
+            const accessRecord = testCase.accessRecords().single();
+            accessRecord.checkUnknown('%err_code');
+            accessRecord.checkUnknown('%err_detail');
+            accessRecord.checkEqual('%Ss', 'TCP_MISS');
+            accessRecord.checkEqual('%Sh', 'FIRSTUP_PARENT');
         });
 
         await testCase.run();
@@ -80,10 +77,11 @@ export default class MyTest extends Test {
         this._configureCachePeersTalkingToBadOrigin();
 
         testCase.check(() => {
-            this._lastAccessRecord.checkEqual('%err_code', 'ERR_RELAY_REMOTE');
-            this._lastAccessRecord.checkUnknown('%err_detail');
-            this._lastAccessRecord.checkEqual('%Ss', 'TCP_TUNNEL');
-            this._lastAccessRecord.checkEqual('%Sh', 'FIRSTUP_PARENT');
+            const accessRecord = testCase.accessRecords().single();
+            accessRecord.checkEqual('%err_code', 'ERR_RELAY_REMOTE');
+            accessRecord.checkUnknown('%err_detail');
+            accessRecord.checkEqual('%Ss', 'TCP_TUNNEL');
+            accessRecord.checkEqual('%Sh', 'FIRSTUP_PARENT');
         });
 
         await testCase.run();
@@ -93,10 +91,11 @@ export default class MyTest extends Test {
         const testCase = this._makeTestCase('GET', `through ${this._badCachePeerDescription()}`);
 
         testCase.check(() => {
-            this._lastAccessRecord.checkEqual('%err_code', 'ERR_CONNECT_FAIL');
-            this._lastAccessRecord.checkEqual('%err_detail', 'WITH_SERVER+errno=111');
-            this._lastAccessRecord.checkEqual('%Ss', 'TCP_MISS_ABORTED');
-            this._lastAccessRecord.checkEqual('%Sh', this._expectedBadCachePeerHierarchyStatus());
+            const accessRecord = testCase.accessRecords().single();
+            accessRecord.checkEqual('%err_code', 'ERR_CONNECT_FAIL');
+            accessRecord.checkEqual('%err_detail', 'WITH_SERVER+errno=111');
+            accessRecord.checkEqual('%Ss', 'TCP_MISS_ABORTED');
+            accessRecord.checkEqual('%Sh', this._expectedBadCachePeerHierarchyStatus());
         });
 
         await testCase.run();
@@ -106,10 +105,11 @@ export default class MyTest extends Test {
         const testCase = this._makeTestCase('CONNECT', `through ${this._badCachePeerDescription()}`);
 
         testCase.check(() => {
-            this._lastAccessRecord.checkEqual('%err_code', 'ERR_CONNECT_FAIL');
-            this._lastAccessRecord.checkEqual('%err_detail', 'errno=111');
-            this._lastAccessRecord.checkEqual('%Ss', 'TCP_TUNNEL');
-            this._lastAccessRecord.checkEqual('%Sh', this._expectedBadCachePeerHierarchyStatus());
+            const accessRecord = testCase.accessRecords().single();
+            accessRecord.checkEqual('%err_code', 'ERR_CONNECT_FAIL');
+            accessRecord.checkEqual('%err_detail', 'errno=111');
+            accessRecord.checkEqual('%Ss', 'TCP_TUNNEL');
+            accessRecord.checkEqual('%Sh', this._expectedBadCachePeerHierarchyStatus());
         });
 
         await testCase.run();
@@ -132,15 +132,15 @@ export default class MyTest extends Test {
         // no server, either to simulate an origin that is not listening or
         // because no server is used when all cache_peers are not listening
 
-        testCase.check(async () => {
+        testCase.expectAccessRecordChecks(this.dut);
+
+        testCase.check(() => {
             testCase.expectStatusCode(503);
 
-            const accessRecords = await this.dut.getNewAccessRecords();
-            const accessRecord = accessRecords.single();
+            const accessRecord = testCase.accessRecords().single();
             accessRecord.checkEqual('%>Hs', '503');
             accessRecord.checkEqual('%rm', requestMethod);
             accessRecord.checkKnown('%<a');
-            this._lastAccessRecord = accessRecord;
         });
 
         return testCase;

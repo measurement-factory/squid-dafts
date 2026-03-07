@@ -155,6 +155,8 @@ export default class MyTest extends Test {
 
         this._blockServer(resource, testCase);
 
+        testCase.expectAccessRecordChecks(this.dut);
+
         testCase.check(() => {
             testCase.expectStatusCode(200);
 
@@ -170,12 +172,10 @@ export default class MyTest extends Test {
             }
         });
 
-        testCase.check(async () => {
-            const accessRecords = await this.dut.getNewAccessRecords();
-
+        testCase.check(() => {
             // no errors; this rejects "successful recovery" cases like
             // %Ss=TCP_CF_REFRESH_FAIL_OLD with %err_code=ERR_CONNECT_FAIL
-            accessRecords.all().forEach(record => {
+            testCase.accessRecords().all().forEach(record => {
                 record.checkUnknown('%err_code');
                 record.checkUnknown('%err_detail');
             });
