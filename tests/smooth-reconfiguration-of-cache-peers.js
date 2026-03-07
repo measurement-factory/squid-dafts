@@ -131,9 +131,57 @@ export default class MyTest extends Test {
         await this._makeTestCase('peerA routing after peerA resurrection', cachePeerA).run();
         await this._makeTestCase('peerB routing after peerA resurrection', cachePeerB).run();
 
+        await this._runPconnCases(cachePeerA, cachePeerB); // enables pconns in both cache_peers
+
+        // Test these last: No API to undo these squid.conf changes yet.
         cachePeerA.config().becomeAttractedToNone(); // only modifies cache_peer_access directives
         cachePeerB.config().becomeAttractedToAll(); // only modifies cache_peer_access directives
         await this.dut.reconfigureAfterChanges();
         await this._makeTestCase('re-routing from peerA to peerB via cache_peer_access mods', cachePeerA, cachePeerB).run();
+    }
+
+    async _runPconnCases(cachePeerA, cachePeerB) {
+
+        cachePeerA.keepConnections();
+        cachePeerB.keepConnections();
+
+        const openCaseA = this._makeTestCase('create peerA pconns', cachePeerA);
+        openCaseA.client().keepConnections();
+        await openCaseA.run();
+
+        const openCaseB = this._makeTestCase('create peerB pconns', cachePeerB);
+        openCaseB.client().keepConnections();
+        await openCaseB.run();
+
+        cachePeerB.config().hide("testing peerA pconns across peerB removal+resurrection");
+        await this.dut.reconfigureAfterChanges();
+        cachePeerB.config().show();
+        await this.dut.reconfigureAfterChanges();
+
+        await this._runPconnReuseCase('peerA pconn reuse after peerB removal+resurrection', cachePeerA, openCaseA, true);
+        await this._runPconnReuseCase('peerB pconn reuse after peerB removal+resurrection', cachePeerB, openCaseB, false);
+    }
+
+    // expecting pconn reuse between client and DUT
+    // expectation of pconn reuse between DUT and cachePeer depends on the last parameter
+    async _runPconnReuseCase(goal, cachePeer, openCase, expectReuseWithCachePeer) {
+        // keep in sync with run() in pconn.js
+
+        const reuseCase = this._makeTestCase(goal, cachePeer);
+        reuseCase.client().reuseConnectionsFrom(openCase.client());
+
+        reuseCase.client().checks.add((client) => {
+            assert.strictEqual(client.transaction().reusedTransportConnection(), true);
+        });
+
+        reuseCase.check(() => {
+            const clientRequestId = reuseCase.client().transaction().request.id();
+            const matchingTransaction = cachePeer.startedTransactions().find(x => x.request && x.request.id() === clientRequestId);
+            assert.strictEqual(matchingTransaction.reusedTransportConnection(), expectReuseWithCachePeer);
+
+            reuseCase.accessRecords().single().checkEqualIn('%transport::>connection_id', openCase.accessRecords().single());
+        });
+
+        await reuseCase.run();
     }
 }
