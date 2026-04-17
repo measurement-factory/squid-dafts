@@ -153,22 +153,30 @@ export default class MyTest extends Test {
         openCaseB.client().keepConnections();
         await openCaseB.run();
 
+        const caseBeforeNoChangeA = this._makePconnReuseCase('peerA pconn reuse before no-change reconfiguration', cachePeerA, openCaseA, true);
+        await caseBeforeNoChangeA.run();
+        await this.dut.reconfigureWithoutChanges(true);
+        const caseAfterNoChangeA = this._makePconnReuseCase('peerA pconn reuse after no-change reconfiguration', cachePeerA, caseBeforeNoChangeA, false);
+        await caseAfterNoChangeA.run();
+
         cachePeerB.config().hide("testing peerA pconns across peerB removal+resurrection");
         await this.dut.reconfigureAfterChanges();
         cachePeerB.config().show();
         await this.dut.reconfigureAfterChanges();
 
-        await this._runPconnReuseCase('peerA pconn reuse after peerB removal+resurrection', cachePeerA, openCaseA, true);
-        await this._runPconnReuseCase('peerB pconn reuse after peerB removal+resurrection', cachePeerB, openCaseB, false);
+        await this._makePconnReuseCase('peerA pconn reuse after peerB removal+resurrection', cachePeerA, caseAfterNoChangeA, false);
+        await this._makePconnReuseCase('peerB pconn reuse after peerB removal+resurrection', cachePeerB, openCaseB, false);
     }
 
-    // expecting pconn reuse between client and DUT
-    // expectation of pconn reuse between DUT and cachePeer depends on the last parameter
-    async _runPconnReuseCase(goal, cachePeer, openCase, expectReuseWithCachePeer) {
+    // Creates a pconn reuse test case to validate the following expectations:
+    // * expecting pconn reuse between client and DUT
+    // * expectation of pconn reuse between DUT and cachePeer depends on the last parameter
+    _makePconnReuseCase(goal, cachePeer, openCase, expectReuseWithCachePeer) {
         // keep in sync with run() in pconn.js
 
         const reuseCase = this._makeTestCase(goal, cachePeer);
         reuseCase.client().reuseConnectionsFrom(openCase.client());
+        reuseCase.client().keepConnections();
 
         reuseCase.client().checks.add((client) => {
             assert.strictEqual(client.transaction().reusedTransportConnection(), true);
@@ -182,6 +190,6 @@ export default class MyTest extends Test {
             reuseCase.accessRecords().single().checkEqualIn('%transport::>connection_id', openCase.accessRecords().single());
         });
 
-        await reuseCase.run();
+        return reuseCase;
     }
 }
