@@ -81,6 +81,17 @@ export default class MyTest extends Test {
                 yield true;
         });
 
+        configGen.dutMemoryCache(function *() {
+            yield false;
+            yield true;
+        });
+
+        configGen.dutDiskCache(function *(cfg) {
+            if (cfg.dutMemoryCache()) // do not end up with no caching at all
+                yield false;
+            yield true;
+        });
+
         return configGen.generateConfigurators();
     }
 
@@ -93,8 +104,6 @@ export default class MyTest extends Test {
         cfg.workers(Config.workers()); // TODO: This should be the default.
         cfg.dedicatedWorkerPorts(Config.workers() > 1); // for simplicity sake; TODO: Do this by default.
         cfg.collapsedForwarding(true);
-        cfg.memoryCaching(true);
-        cfg.diskCaching(false);
         if (Config.negativeCaching())
             cfg.custom("negative_ttl 1 hour");
 
@@ -162,11 +171,7 @@ export default class MyTest extends Test {
                 collapsedClient.checks.add(client => {
 
                     if (Config.clientSendNotModified()) {
-                        if (Config.serverCode() === 200 && isInitiator) {
-                            client.expectStatusCode(200);
-                        } else { 
-                            client.expectStatusCode(304);
-                        }
+                        client.expectStatusCode(304);
                     } else if (Config.serverCode() === 503) {
                         if (Config.negativeCaching()) {
                             client.expectStatusCode(503);
@@ -193,7 +198,7 @@ export default class MyTest extends Test {
                         assert.equal(updatingResponse.tag(), receivedResponse.tag(), "updated X-Daft-Response-Tag");
                     } else {
                         assert(receivedCode === 304);
-                        if (isInitiator) {
+                        if (Config.serverCode() === 304 && isInitiator) {
                             assert.equal(updatingResponse.tag(), receivedResponse.tag(), "updated X-Daft-Response-Tag");
                         }
                         // else Squid-generated 304 does not have tags
