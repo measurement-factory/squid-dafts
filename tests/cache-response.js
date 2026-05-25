@@ -99,6 +99,8 @@ export default class MyTest extends Test {
         hitCase.addHitCheck(missCase.server().transaction().response);
         await hitCase.run();
 
+        // TODO: If caching to disk, check that the cached response survives this.dut.restart().
+
         AddressPool.ReleaseListeningAddress(resource.uri.address);
     }
 
