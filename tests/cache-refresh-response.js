@@ -6,14 +6,14 @@
 // the client request requires such revalidation), the proxy ought to cache a
 // cachable 200 OK revalidation response.
 
-import * as AddressPool from "../src/misc/AddressPool";
-import * as Config from "../src/misc/Config";
-import * as Http from "../src/http/Gadgets";
+import { FlexibleConfigGen } from "../src/test/ConfigGen.js";
+import * as AddressPool from "../src/misc/AddressPool.js";
+import * as Http from "../src/http/Gadgets.js";
 import assert from "assert";
-import HttpTestCase from "../src/test/HttpCase";
-import Resource from "../src/anyp/Resource";
-import Test from "../src/overlord/Test";
-import { FlexibleConfigGen } from "../src/test/ConfigGen";
+import Config from "../src/misc/Config.js";
+import HttpTestCase from "../src/test/HttpCase.js";
+import Resource from "../src/anyp/Resource.js";
+import Test from "../src/overlord/Test.js";
 
 // the highest worker ID we are using (via _workerListeningAddressFor() calls)
 const WorkerIdMax = 3;

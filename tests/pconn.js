@@ -4,11 +4,11 @@
 
 // Check whether the proxy reuses persistent connections with the client and server.
 
+import * as AddressPool from "../src/misc/AddressPool.js";
 import assert from "assert";
-import HttpTestCase from "../src/test/HttpCase";
-import Resource from "../src/anyp/Resource";
-import * as AddressPool from "../src/misc/AddressPool";
-import Test from "../src/overlord/Test";
+import HttpTestCase from "../src/test/HttpCase.js";
+import Resource from "../src/anyp/Resource.js";
+import Test from "../src/overlord/Test.js";
 
 export default class MyTest extends Test {
 

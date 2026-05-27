@@ -4,15 +4,14 @@
 
 /* Tests HTTP proxy cache availability, consistency across hard restarts */
 
-import * as AddressPool from "../src/misc/AddressPool";
-import * as Config from "../src/misc/Config";
-import * as ConfigurationGenerator from "../src/test/ConfigGen";
-import * as Http from "../src/http/Gadgets";
-import HttpTestCase from "../src/test/HttpCase";
-import Resource from "../src/anyp/Resource";
-import Test from "../src/overlord/Test";
-
+import * as AddressPool from "../src/misc/AddressPool.js";
+import * as ConfigurationGenerator from "../src/test/ConfigGen.js";
+import * as Http from "../src/http/Gadgets.js";
 import assert from "assert";
+import Config from "../src/misc/Config.js";
+import HttpTestCase from "../src/test/HttpCase.js";
+import Resource from "../src/anyp/Resource.js";
+import Test from "../src/overlord/Test.js";
 
 const reRestart = "restart";
 const reReconfigure = "reconfigure";

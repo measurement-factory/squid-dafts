@@ -6,11 +6,11 @@
 // validation errors. Currently focuses on cases handled at the top of
 // Http::One::Server::buildHttpRequest().
 
-import * as Config from "../src/misc/Config";
-import * as Gadgets from "../src/misc/Gadgets";
-import Authority from "../src/anyp/Authority";
-import HttpTestCase from "../src/test/HttpCase";
-import Test from "../src/overlord/Test";
+import * as Gadgets from "../src/misc/Gadgets.js";
+import Authority from "../src/anyp/Authority.js";
+import Config from "../src/misc/Config.js";
+import HttpTestCase from "../src/test/HttpCase.js";
+import Test from "../src/overlord/Test.js";
 
 export default class MyTest extends Test {
 

@@ -9,14 +9,13 @@
 // connection prematurely) or by the proxy itself (when it prematurely
 // declares a read timeout).
 
-import * as AddressPool from "../src/misc/AddressPool";
-import * as Config from "../src/misc/Config";
-import ConfigGen from "../src/test/ConfigGen";
-import HttpTestCase from "../src/test/HttpCase";
-import Resource from "../src/anyp/Resource";
-import Test from "../src/overlord/Test";
-
+import * as AddressPool from "../src/misc/AddressPool.js";
 import assert from "assert";
+import Config from "../src/misc/Config.js";
+import ConfigGen from "../src/test/ConfigGen.js";
+import HttpTestCase from "../src/test/HttpCase.js";
+import Resource from "../src/anyp/Resource.js";
+import Test from "../src/overlord/Test.js";
 
 // all the supported ways to truncate a to-proxy response
 const TruncationWays = [

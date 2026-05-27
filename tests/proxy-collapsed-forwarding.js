@@ -5,16 +5,15 @@
 // Tests whether an HTTP proxy can merge concurrently received requests into a
 // single sent request. Also tests cache hit delivery to concurrent clients.
 
+import * as AddressPool from "../src/misc/AddressPool.js";
+import * as Gadgets from "../src/misc/Gadgets.js";
+import * as Http from "../src/http/Gadgets.js";
 import assert from "assert";
-
-import * as AddressPool from "../src/misc/AddressPool";
-import * as Config from "../src/misc/Config";
-import * as Gadgets from "../src/misc/Gadgets";
-import * as Http from "../src/http/Gadgets";
-import ConfigGen from "../src/test/ConfigGen";
-import HttpTestCase from "../src/test/HttpCase";
-import Resource from "../src/anyp/Resource";
-import Test from "../src/overlord/Test";
+import Config from "../src/misc/Config.js";
+import ConfigGen from "../src/test/ConfigGen.js";
+import HttpTestCase from "../src/test/HttpCase.js";
+import Resource from "../src/anyp/Resource.js";
+import Test from "../src/overlord/Test.js";
 
 // Compute syntax specification for the --collapsed-requests option.
 // The WorkerLimit is only needed to keep --help output reasonable.

@@ -5,16 +5,15 @@
 // Check whether proxy-introduced delays match proxy configuration.
 // TODO: Test more than just response_delay_pool directive.
 
-import * as AddressPool from "../src/misc/AddressPool";
-import * as Config from "../src/misc/Config";
-import * as Gadgets from "../src/misc/Gadgets";
-import Body from "../src/http/Body";
-import ConfigGen from "../src/test/ConfigGen";
-import HttpTestCase from "../src/test/HttpCase";
-import Resource from "../src/anyp/Resource";
-import Test from "../src/overlord/Test";
-
+import * as AddressPool from "../src/misc/AddressPool.js";
+import * as Gadgets from "../src/misc/Gadgets.js";
 import assert from "assert";
+import Body from "../src/http/Body.js";
+import Config from "../src/misc/Config.js";
+import ConfigGen from "../src/test/ConfigGen.js";
+import HttpTestCase from "../src/test/HttpCase.js";
+import Resource from "../src/anyp/Resource.js";
+import Test from "../src/overlord/Test.js";
 
 Config.Recognize([
     {

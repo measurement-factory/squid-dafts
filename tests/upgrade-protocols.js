@@ -12,16 +12,16 @@
  * allowed (or blocked) the upgrade.
  */
 
-import * as Config from "../src/misc/Config";
-import * as Http from "../src/http/Gadgets";
-import * as AddressPool from "../src/misc/AddressPool";
-import HttpTestCase from "../src/test/HttpCase";
-import Resource from "../src/anyp/Resource";
-import HeaderField from "../src/http/Field";
-import Body from "../src/http/Body";
+import { DutConfig } from "../src/overlord/Proxy.js";
+import * as AddressPool from "../src/misc/AddressPool.js";
+import * as Http from "../src/http/Gadgets.js";
 import assert from "assert";
-import Test from "../src/overlord/Test";
-import { DutConfig } from "../src/overlord/Proxy";
+import Body from "../src/http/Body.js";
+import Config from "../src/misc/Config.js";
+import HeaderField from "../src/http/Field.js";
+import HttpTestCase from "../src/test/HttpCase.js";
+import Resource from "../src/anyp/Resource.js";
+import Test from "../src/overlord/Test.js";
 
 Config.Recognize([
     {

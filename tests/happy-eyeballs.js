@@ -2,13 +2,12 @@
 // Copyright (C) The Measurement Factory.
 // http://www.measurement-factory.com/
 
-import * as AddressPool from "../src/misc/AddressPool";
-import * as Config from "../src/misc/Config";
-import * as Gadgets from "../src/misc/Gadgets";
-import HttpTestCase from "../src/test/HttpCase";
-import Test from "../src/overlord/Test";
-
+import * as AddressPool from "../src/misc/AddressPool.js";
+import * as Gadgets from "../src/misc/Gadgets.js";
 import assert from "assert";
+import Config from "../src/misc/Config.js";
+import HttpTestCase from "../src/test/HttpCase.js";
+import Test from "../src/overlord/Test.js";
 
 /* for time conversion to milliseconds */
 const milliseconds = 1;

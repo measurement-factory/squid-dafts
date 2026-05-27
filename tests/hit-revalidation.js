@@ -11,16 +11,15 @@
 // * Revalidation is expected in soLiveFeeding and soPureHits cases (because
 //   hit requests ask Squid to revalidate fresh responses).
 
-import * as AddressPool from "../src/misc/AddressPool";
-import * as Config from "../src/misc/Config";
-import * as ConfigurationGenerator from "../src/test/ConfigGen";
-import * as FuzzyTime from "../src/misc/FuzzyTime";
-import * as Http from "../src/http/Gadgets";
-import HttpTestCase from "../src/test/HttpCase";
-import Resource from "../src/anyp/Resource";
-import Test from "../src/overlord/Test";
-
+import * as AddressPool from "../src/misc/AddressPool.js";
+import * as ConfigurationGenerator from "../src/test/ConfigGen.js";
+import * as FuzzyTime from "../src/misc/FuzzyTime.js";
+import * as Http from "../src/http/Gadgets.js";
 import assert from "assert";
+import Config from "../src/misc/Config.js";
+import HttpTestCase from "../src/test/HttpCase.js";
+import Resource from "../src/anyp/Resource.js";
+import Test from "../src/overlord/Test.js";
 
 // TODO: Duplicates proxy-collapsed-forwarding.js.
 // all clients arrive before response headers

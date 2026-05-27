@@ -4,13 +4,12 @@
 
 // Test smooth reconfiguration of cache_peer and cache_peer_access directives.
 
+import { FlexibleConfigGen } from "../src/test/ConfigGen.js";
+import * as CachePeer from "../src/overlord/CachePeer.js";
 import assert from "assert";
-
-import * as Config from "../src/misc/Config";
-import * as CachePeer from "../src/overlord/CachePeer";
-import HttpTestCase from "../src/test/HttpCase";
-import Test from "../src/overlord/Test";
-import { FlexibleConfigGen } from "../src/test/ConfigGen";
+import Config from "../src/misc/Config.js";
+import HttpTestCase from "../src/test/HttpCase.js";
+import Test from "../src/overlord/Test.js";
 
 export default class MyTest extends Test {
 
