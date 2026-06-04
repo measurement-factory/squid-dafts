@@ -52,6 +52,11 @@ Config.Recognize([
         type: "Boolean",
         description: "turns on 503 responses negative caching mode",
     },
+    {
+        option: "fresher-reply",
+        type: "Boolean",
+        description: "whether the server generates a fresher 200 or 503 reply than that has been cached",
+    },
 ]);
 
 export default class MyTest extends Test {
@@ -71,13 +76,19 @@ export default class MyTest extends Test {
 
         configGen.clientSendNotModified(function *(cfg) {
             yield false;
-            if (cfg.serverCode() === 200 || cfg.serverCode() === 304 )
+            if (cfg.serverCode() === 200 || cfg.serverCode() === 304)
                 yield true;
         });
 
         configGen.negativeCaching(function *(cfg) {
             yield false;
             if (cfg.serverCode() === 503)
+                yield true;
+        });
+
+        configGen.fresherReply(function *(cfg) {
+            yield false;
+            if (cfg.serverCode() === 200 || cfg.serverCode() === 503)
                 yield true;
         });
 
@@ -138,12 +149,16 @@ export default class MyTest extends Test {
         await this._checkCached(initialResponse);
 
         let testCase = new HttpTestCase('force a refresh miss that replaces the previously cached response');
-        this._resource.modifyNow();
+        const ims = Config.clientSendNotModified() ? { ims: this._resource.notModifiedSince()} : null;
+
+        if (ims)
+            testCase.client().request.conditions(ims);
+
+        if (Config.fresherReply())
+            this._resource.modifyNow();
+
         this._resource.requireRevalidationOnEveryUse(false);
         testCase.server().serve(this._resource);
-        if (Config.clientSendNotModified()) {
-            testCase.client().request.conditions({ ims: this._resource.notModifiedSince() });
-        }
 
         testCase.server().response.tag("second");
         testCase.server().response.startLine.code(Config.serverCode());
@@ -159,9 +174,9 @@ export default class MyTest extends Test {
 
             testCase.makeClients(collapsedRequestsForWorker[worker], (collapsedClient) => {
                 collapsedClient.request.for(this._resource);
-                if (Config.clientSendNotModified()) {
-                    collapsedClient.request.conditions({ ims: this._resource.notModifiedSince() });
-                }
+
+                if (ims)
+                    collapsedClient.request.conditions(ims);
 
                 collapsedClient.nextHopAddress = this._workerListeningAddresses[worker];
                 this._blockClient(collapsedClient, testCase);
@@ -170,8 +185,11 @@ export default class MyTest extends Test {
 
                 collapsedClient.checks.add(client => {
 
-                    if (Config.clientSendNotModified()) {
-                        client.expectStatusCode(304);
+                    if (Config.serverCode() === 304) {
+                        if (ims)
+                            client.expectStatusCode(304);
+                        else
+                            client.expectStatusCode(200);
                     } else if (Config.serverCode() === 503) {
                         if (Config.negativeCaching()) {
                             client.expectStatusCode(503);
@@ -181,7 +199,12 @@ export default class MyTest extends Test {
                             client.expectStatusCode(504); // Squid generates 504 after the collapsed client fails to connect directly
                         }
                     } else {
-                        client.expectStatusCode(200);
+                        assert(Config.serverCode() === 200);
+
+                        if (!Config.fresherReply() && ims)
+                            client.expectStatusCode(304);
+                        else
+                            client.expectStatusCode(200);
                     }
 
                     const receivedResponse = client.transaction().response;
